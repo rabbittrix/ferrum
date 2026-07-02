@@ -1,0 +1,30 @@
+# Build artifacts
+/target/
+**/dist/
+**/.next/
+**/node_modules/
+
+# Ferrum state & secrets — NEVER commit
+ferrum.fstate
+.ferrum_key
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tauri
+ferrum-gui/src-tauri/target/
+ferrum-gui/src-tauri/gen/
+
+# Demo / local projects
+demo-project/
+
+# Cargo lock for workspace root only
+# (keep Cargo.lock for reproducible builds)

@@ -1,0 +1,28 @@
+[package]
+name = "ferrum-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ferrum CLI — init, plan, apply, import, refresh"
+default-run = "ferrum"
+
+[[bin]]
+name = "ferrum"
+path = "src/main.rs"
+
+[dependencies]
+ferrum-core = { path = "../ferrum-core" }
+ferrum-state = { path = "../ferrum-state" }
+ferrum-provider-bridge = { path = "../ferrum-provider-bridge" }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
+dirs = { workspace = true }
+chrono = { workspace = true }

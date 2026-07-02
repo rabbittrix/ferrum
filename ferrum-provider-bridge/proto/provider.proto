@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package ferrum.provider.v1;
+
+// Bridge to Terraform-compatible Go providers via gRPC.
+// Ferrum core (Rust) ↔ Provider Bridge ↔ Terraform Provider (Go binary)
+
+service ProviderBridge {
+  // Handshake and provider metadata
+  rpc GetProviderInfo(ProviderInfoRequest) returns (ProviderInfoResponse);
+
+  // Schema discovery
+  rpc GetSchema(GetSchemaRequest) returns (GetSchemaResponse);
+
+  // Resource lifecycle
+  rpc PlanResourceChange(PlanResourceChangeRequest) returns (PlanResourceChangeResponse);
+  rpc ApplyResourceChange(ApplyResourceChangeRequest) returns (ApplyResourceChangeResponse);
+  rpc ReadResource(ReadResourceRequest) returns (ReadResourceResponse);
+  rpc ImportResource(ImportResourceRequest) returns (ImportResourceResponse);
+
+  // Parallel refresh support
+  rpc RefreshResources(RefreshResourcesRequest) returns (stream RefreshResourceResponse);
+}
+
+message ProviderInfoRequest {
+  string provider_address = 1; // e.g. "registry.terraform.io/hashicorp/aws"
+}
+
+message ProviderInfoResponse {
+  string name = 1;
+  string version = 2;
+  repeated string supported_resources = 3;
+}
+
+message GetSchemaRequest {
+  string provider_address = 1;
+}
+
+message GetSchemaResponse {
+  string schema_json = 1;
+}
+
+message PlanResourceChangeRequest {
+  string resource_type = 1;
+  string cloud_uid = 2;
+  string prior_state_json = 3;
+  string proposed_state_json = 4;
+}
+
+message PlanResourceChangeResponse {
+  string planned_state_json = 1;
+  repeated string diagnostics = 2;
+}
+
+message ApplyResourceChangeRequest {
+  string resource_type = 1;
+  string planned_state_json = 2;
+}
+
+message ApplyResourceChangeResponse {
+  string new_state_json = 1;
+  string cloud_uid = 2;
+  repeated string diagnostics = 3;
+}
+
+message ReadResourceRequest {
+  string resource_type = 1;
+  string cloud_uid = 2;
+  string current_state_json = 3;
+}
+
+message ReadResourceResponse {
+  string current_state_json = 1;
+  string cloud_uid = 2;
+  bool exists = 3;
+}
+
+message ImportResourceRequest {
+  string resource_type = 1;
+  string import_id = 2;
+}
+
+message ImportResourceResponse {
+  string state_json = 1;
+  string cloud_uid = 2;
+}
+
+message RefreshResourcesRequest {
+  repeated ReadResourceRequest resources = 1;
+}
+
+message RefreshResourceResponse {
+  ReadResourceResponse result = 1;
+  int32 index = 2;
+}

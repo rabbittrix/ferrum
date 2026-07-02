@@ -1,0 +1,27 @@
+[package]
+name = "ferrum-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ferrum desktop GUI — Tauri shell"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+ferrum-core = { path = "../../ferrum-core" }
+ferrum-state = { path = "../../ferrum-state" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tokio = { workspace = true }
+
+[lib]
+name = "ferrum_gui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "ferrum-gui"
+path = "src/main.rs"
