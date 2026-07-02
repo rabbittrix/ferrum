@@ -69,8 +69,24 @@ enum Commands {
         #[arg(short, long)]
         passphrase: Option<String>,
     },
+    /// Manage Terraform provider plugins
+    Provider {
+        #[command(subcommand)]
+        command: ProviderCommands,
+    },
     /// Show Ferrum version and build info
     Version,
+}
+
+#[derive(Subcommand)]
+enum ProviderCommands {
+    /// Download and install a provider (aws, azurerm, google)
+    Install {
+        /// Provider name
+        name: String,
+    },
+    /// List installed providers
+    List,
 }
 
 #[tokio::main]
@@ -82,7 +98,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if !cli.no_telemetry {
-        ferrum_telemetry::maybe_notify_install(env!("CARGO_PKG_VERSION"));
+        let providers = ferrum_provider_bridge::PluginManager::new().installed_provider_names();
+        ferrum_telemetry::maybe_notify_install_with_providers(
+            env!("CARGO_PKG_VERSION"),
+            &providers,
+        );
     }
 
     match cli.command {
@@ -101,6 +121,10 @@ async fn main() -> Result<()> {
         Commands::Refresh { state, passphrase } => {
             commands::refresh(&state, passphrase.as_deref()).await?
         }
+        Commands::Provider { command } => match command {
+            ProviderCommands::Install { name } => commands::provider_install(&name).await?,
+            ProviderCommands::List => commands::provider_list()?,
+        },
         Commands::Version => {
             println!("Ferrum v{}", env!("CARGO_PKG_VERSION"));
             println!("Author: Roberto de Souza <rabbittrix@hotmail.com>");

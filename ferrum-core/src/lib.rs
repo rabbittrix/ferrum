@@ -11,6 +11,7 @@ mod graph_export;
 mod import;
 mod lock;
 mod plan;
+mod provider;
 mod refresh;
 mod uid;
 mod vault;
@@ -34,6 +35,7 @@ pub use plan::{
     deps_from_resources, format_plan, format_plan_colored, graph_from_state, plan_cost_estimate,
     apply_plan, compute_plan, ChangeAction, Plan, PlannedChange, PlanSummary,
 };
+pub use provider::{apply_with_providers, load_schemas_for_types};
 pub use refresh::refresh_resources;
 pub use uid::UidResolver;
 pub use vault::Vault;

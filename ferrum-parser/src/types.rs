@@ -1,8 +1,9 @@
 use crate::ast::{FeFile, FeResource, FeValue};
 use crate::error::{ParseError, Result};
+use crate::schema_registry::SchemaRegistry;
 use crate::symbol::SymbolTable;
 
-/// Known resource schemas — validated before `ferrum plan`.
+/// Known resource schemas — validated before `ferrum plan` when no provider schema loaded.
 const REQUIRED_ATTRS: &[(&str, &[&str])] = &[
     ("aws_vpc", &["cidr_block"]),
     ("aws_subnet", &["vpc_id", "cidr_block"]),
@@ -50,10 +51,18 @@ pub fn typecheck_or_err(file: &FeFile) -> Result<()> {
 }
 
 pub fn validate_file(file: &FeFile, symbols: &SymbolTable) -> Result<()> {
+    validate_file_with_registry(file, symbols, &SchemaRegistry::with_builtins())
+}
+
+pub fn validate_file_with_registry(
+    file: &FeFile,
+    symbols: &SymbolTable,
+    registry: &SchemaRegistry,
+) -> Result<()> {
     let mut errors: Vec<(usize, usize, String, String)> = Vec::new();
 
     for resource in &file.resources {
-        validate_required_attrs(resource, &mut errors);
+        validate_required_attrs_registry(resource, registry, &mut errors);
         validate_depends_on(resource, symbols, &mut errors);
 
         for value in resource.attributes.values() {
@@ -77,6 +86,39 @@ pub fn validate_file(file: &FeFile, symbols: &SymbolTable) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn validate_required_attrs_registry(
+    resource: &FeResource,
+    registry: &SchemaRegistry,
+    errors: &mut Vec<(usize, usize, String, String)>,
+) {
+    let required: Vec<&str> = registry
+        .required_for(&resource.resource_type)
+        .map(|v| v.iter().map(String::as_str).collect())
+        .unwrap_or_default();
+
+    if required.is_empty() {
+        if REQUIRED_ATTRS.iter().all(|(t, _)| *t != resource.resource_type) {
+            return;
+        }
+        validate_required_attrs(resource, errors);
+        return;
+    }
+
+    for attr in required {
+        if !resource.attributes.contains_key(attr) {
+            errors.push((
+                resource.line,
+                resource.column,
+                resource.address(),
+                format!(
+                    "missing required attribute '{}' for resource type '{}' (provider schema)",
+                    attr, resource.resource_type
+                ),
+            ));
+        }
+    }
 }
 
 fn validate_required_attrs(

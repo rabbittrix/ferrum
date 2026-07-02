@@ -7,6 +7,10 @@ const WEBHOOK_URL: &str = "https://your-webhook.com/install";
 const AUTHOR_EMAIL: &str = "rabbittrix@hotmail.com";
 
 pub fn maybe_notify_install(version: &str) {
+    maybe_notify_install_with_providers(version, &[]);
+}
+
+pub fn maybe_notify_install_with_providers(version: &str, providers: &[String]) {
     if std::env::var("FERRUM_TELEMETRY_DISABLED").is_ok() {
         return;
     }
@@ -17,8 +21,9 @@ pub fn maybe_notify_install(version: &str) {
     }
 
     let version = version.to_string();
+    let providers = providers.to_vec();
     std::thread::spawn(move || {
-        notify_install(&version);
+        notify_install(&version, &providers);
         if let Some(parent) = marker.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -33,7 +38,7 @@ fn marker_path() -> PathBuf {
         .join(MARKER_FILE)
 }
 
-fn notify_install(version: &str) {
+fn notify_install(version: &str, providers: &[String]) {
     let client = match reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
@@ -50,6 +55,12 @@ fn notify_install(version: &str) {
             "ferrum_version": version,
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
+            "providers_initialized": providers,
         }))
         .send();
+}
+
+/// Collect display names of installed/initialized providers for telemetry.
+pub fn provider_display_names(names: &[String]) -> Vec<String> {
+    names.to_vec()
 }

@@ -2,9 +2,10 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use ferrum_core::{
-    format_plan_colored, import_tfstate as core_import_tfstate, load_project, plan_cost_estimate,
-    save_plan_graph, Engine,
+    apply_with_providers, format_plan_colored, import_tfstate as core_import_tfstate, load_project,
+    plan_cost_estimate, save_plan_graph, Engine,
 };
+use ferrum_provider_bridge::{PluginManager, ProviderPool};
 use ferrum_state::{State, STATE_FILENAME};
 
 pub fn init(path: &str, passphrase: Option<&str>) -> Result<()> {
@@ -119,13 +120,48 @@ pub async fn apply(state_path: &str, passphrase: Option<&str>, auto_approve: boo
         }
     }
 
-    engine
-        .apply(&plan, &project.resources)
-        .context("apply plan")?;
+    let pool = ProviderPool::default();
+    apply_with_providers(&mut engine.state, &plan, &project.resources, &pool)
+        .await
+        .context("apply via provider bridge")?;
     let graph_path = save_plan_graph(Path::new(state_path), &project.resources)
         .context("write infrastructure graph")?;
     println!("✓ Apply complete. State saved to {}", state_path);
     println!("  Graph: {}", graph_path.display());
+    Ok(())
+}
+
+pub async fn provider_install(name: &str) -> Result<()> {
+    let manager = PluginManager::new();
+    println!("Installing Terraform provider '{name}'…");
+    let installed = manager.ensure_provider(name).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!(
+        "✓ Installed {} v{} at {}",
+        installed.spec.display_name,
+        installed.version,
+        installed.binary_path.display()
+    );
+    println!("  SHA256 manifest: {}.sha256", installed.binary_path.display());
+    Ok(())
+}
+
+pub fn provider_list() -> Result<()> {
+    let manager = PluginManager::new();
+    let installed = manager.discover_installed().map_err(|e| anyhow::anyhow!("{e}"))?;
+    if installed.is_empty() {
+        println!("No providers installed. Run: ferrum provider install aws");
+        return Ok(());
+    }
+    println!("Installed providers:");
+    for p in installed {
+        println!(
+            "  {} ({}) v{} — {}",
+            p.spec.display_name,
+            p.spec.name,
+            p.version,
+            p.binary_path.display()
+        );
+    }
     Ok(())
 }
 

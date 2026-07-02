@@ -11,6 +11,7 @@ ferrum-crypto = { path = "../ferrum-crypto" }
 ferrum-parser = { path = "../ferrum-parser" }
 ferrum-resolver = { path = "../ferrum-resolver" }
 ferrum-state = { path = "../ferrum-state" }
+ferrum-provider-bridge = { path = "../ferrum-provider-bridge" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

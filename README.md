@@ -187,6 +187,8 @@ See [`infra.fe`](infra.fe) for a full multi-resource example.
 | `ferrum apply` | Apply planned changes |
 | `ferrum import <tfstate>` | Import Terraform JSON state |
 | `ferrum refresh` | Parallel cloud-state refresh |
+| `ferrum provider install <name>` | Download & verify Terraform provider binary |
+| `ferrum provider list` | List installed providers |
 | `ferrum version` | Show version info |
 
 ### Global Flags
@@ -223,13 +225,45 @@ Features:
 
 ## Provider Bridge
 
-Ferrum communicates with Terraform-compatible Go providers via gRPC (`ferrum-provider-bridge/proto/provider.proto`):
+Ferrum communicates with **Terraform Provider binaries** (Go) via the **official HashiCorp Terraform Plugin Protocol v5/v6** over gRPC. Protobuf definitions are vendored from HashiCorp and compiled with **tonic** at build time:
 
-```Text
-Ferrum Core (Rust) ──gRPC──▶ Provider Bridge ──▶ Terraform Provider (Go)
+| File | Source |
+|------|--------|
+| `ferrum-provider-bridge/proto/tfplugin6.proto` | [terraform/docs/plugin-protocol/tfplugin6.proto](https://github.com/hashicorp/terraform/blob/main/docs/plugin-protocol/tfplugin6.proto) (v6.11) |
+| `ferrum-provider-bridge/proto/tfplugin5.proto` | [terraform/docs/plugin-protocol/tfplugin5.proto](https://github.com/hashicorp/terraform/blob/main/docs/plugin-protocol/tfplugin5.proto) (v5.10) |
+
+The Rust client is generated in `build.rs` via `tonic-build` (client-only, no server). v6 is preferred when the provider negotiates protocol 6 during the go-plugin handshake; v5 is used as fallback.
+
+```text
+Ferrum Core (Rust) ──gRPC──▶ terraform-provider-aws (Go binary)
+         │                         ▲
+         ├── PluginManager          │ go-plugin handshake
+         ├── SHA256 checksum gate   │
+         └── ProviderPool (tokio)   └── AWS / Azure / GCP APIs
 ```
 
-Start a provider bridge server, then configure `ferrum.toml`:
+### Install official providers
+
+```bash
+ferrum provider install aws
+ferrum provider install azurerm
+ferrum provider install google
+ferrum provider list
+```
+
+Providers are downloaded from `registry.terraform.io`, verified with **SHA256** before launch, and stored in `~/.ferrum/plugins/`.
+
+### How it works
+
+| Step | Component |
+|------|-----------|
+| 1 | `PluginManager` discovers/downloads provider binaries |
+| 2 | Checksum verified before every launch |
+| 3 | go-plugin handshake establishes gRPC channel |
+| 4 | `GetSchema` maps required fields to `.fe` validation |
+| 5 | `PlanResourceChange` / `ApplyResourceChange` update `ferrum.fstate` |
+
+Optional sidecar bridge server (`ferrum-provider-bridge/proto/provider.proto`) for remote provider hosting:
 
 ```toml
 [provider.aws]
