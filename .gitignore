@@ -23,7 +23,7 @@ Thumbs.db
 ferrum-gui/src-tauri/target/
 ferrum-gui/src-tauri/gen/
 
-# Demo / local projects
+ferrum.graph.json
 demo-project/
 
 # Cargo lock for workspace root only

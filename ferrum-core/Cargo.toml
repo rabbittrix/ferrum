@@ -7,6 +7,9 @@ authors.workspace = true
 description = "Ferrum IaC engine — dependency graph, concurrency, resource lifecycle"
 
 [dependencies]
+ferrum-crypto = { path = "../ferrum-crypto" }
+ferrum-parser = { path = "../ferrum-parser" }
+ferrum-resolver = { path = "../ferrum-resolver" }
 ferrum-state = { path = "../ferrum-state" }
 serde = { workspace = true }
 serde_json = { workspace = true }

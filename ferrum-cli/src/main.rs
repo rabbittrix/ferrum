@@ -1,5 +1,4 @@
 mod commands;
-mod telemetry;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -83,7 +82,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if !cli.no_telemetry {
-        telemetry::maybe_notify_install();
+        ferrum_telemetry::maybe_notify_install(env!("CARGO_PKG_VERSION"));
     }
 
     match cli.command {

@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
+    "ferrum-crypto",
+    "ferrum-parser",
+    "ferrum-resolver",
+    "ferrum-telemetry",
     "ferrum-core",
     "ferrum-state",
     "ferrum-cli",

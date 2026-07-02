@@ -18,6 +18,9 @@ tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tokio = { workspace = true }
 
+[dev-dependencies]
+tempfile = "3"
+
 [lib]
 name = "ferrum_gui_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

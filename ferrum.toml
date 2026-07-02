@@ -1,0 +1,17 @@
+# Ferrum project configuration
+# Author: Roberto de Souza
+
+[project]
+name = "my-infrastructure"
+version = "0.1.0"
+
+[provider.aws]
+region = "us-east-1"
+
+[state]
+encrypted = true
+file = "ferrum.fstate"
+
+[telemetry]
+# Set to true to disable anonymous install notification
+disabled = false

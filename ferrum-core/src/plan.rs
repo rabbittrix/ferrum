@@ -1,7 +1,9 @@
 use ferrum_state::{ResourceInstance, ResourceStatus, State};
 
+use crate::cost::{estimate_plan_cost, CostEstimate};
 use crate::error::Result;
 use crate::graph::DependencyGraph;
+use crate::graph_export::InfrastructureGraph;
 use crate::uid::UidResolver;
 
 /// Planned change to a resource.
@@ -165,6 +167,48 @@ pub fn apply_plan(state: &mut State, plan: &Plan, desired: &[ResourceInstance]) 
     Ok(())
 }
 
+pub fn format_plan_colored(plan: &Plan) -> String {
+    const GREEN: &str = "\x1b[32m";
+    const YELLOW: &str = "\x1b[33m";
+    const RED: &str = "\x1b[31m";
+    const CYAN: &str = "\x1b[36m";
+    const DIM: &str = "\x1b[2m";
+    const RESET: &str = "\x1b[0m";
+
+    let summary = plan.summary();
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{CYAN}Plan:{RESET} {GREEN}{} to create{RESET}, {YELLOW}{} to update{RESET}, {RED}{} to delete{RESET}, {} to rename, {} unchanged\n\n",
+        summary.create, summary.update, summary.delete, summary.rename, summary.noop
+    ));
+
+    for c in &plan.changes {
+        if c.action == ChangeAction::NoOp {
+            continue;
+        }
+        let (symbol, color) = match c.action {
+            ChangeAction::Create => ("+", GREEN),
+            ChangeAction::Update => ("~", YELLOW),
+            ChangeAction::Delete => ("-", RED),
+            ChangeAction::Rename => ("↔", CYAN),
+            ChangeAction::NoOp => (" ", DIM),
+        };
+        out.push_str(&format!(
+            "  {color}{symbol}{RESET} {CYAN}{}{RESET} ({DIM}{}{RESET}) — {}\n",
+            c.address, c.resource_type, c.reason
+        ));
+    }
+
+    if !plan.execution_order.is_empty() {
+        out.push_str(&format!("\n{DIM}Execution order:{RESET}\n"));
+        for (i, addr) in plan.execution_order.iter().enumerate() {
+            out.push_str(&format!("  {}. {}\n", i + 1, addr));
+        }
+    }
+
+    out
+}
+
 /// Format plan for CLI output.
 pub fn format_plan(plan: &Plan) -> String {
     let summary = plan.summary();
@@ -190,4 +234,48 @@ pub fn format_plan(plan: &Plan) -> String {
         ));
     }
     out
+}
+
+/// Cost estimate for billable plan changes (create / update / delete).
+pub fn plan_cost_estimate(plan: &Plan) -> CostEstimate {
+    let billable: Vec<(String, String)> = plan
+        .changes
+        .iter()
+        .filter_map(|c| {
+            let action = match c.action {
+                ChangeAction::Create => "create",
+                ChangeAction::Update => "update",
+                ChangeAction::Delete => "delete",
+                ChangeAction::Rename => "rename",
+                ChangeAction::NoOp => return None,
+            };
+            Some((c.address.clone(), action.to_string()))
+        })
+        .collect();
+    let refs: Vec<(&str, &str)> = billable
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    estimate_plan_cost(&refs)
+}
+
+/// Collect dependency edges from resource `depends_on` attributes.
+pub fn deps_from_resources(resources: &[ResourceInstance]) -> Vec<(String, String)> {
+    let mut deps = Vec::new();
+    for r in resources {
+        if let Some(arr) = r.attributes.get("depends_on").and_then(|v| v.as_array()) {
+            for d in arr {
+                if let Some(dep) = d.as_str() {
+                    deps.push((dep.to_string(), r.address.clone()));
+                }
+            }
+        }
+    }
+    deps
+}
+
+/// Rebuild dashboard graph from current encrypted state.
+pub fn graph_from_state(state: &State) -> InfrastructureGraph {
+    let deps = deps_from_resources(state.resources());
+    InfrastructureGraph::from_resources(state.resources(), &deps)
 }

@@ -1,0 +1,29 @@
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+NEWLINE = _{ "\r\n" | "\n" | "\r" }
+COMMENT = _{ "//" ~ (!NEWLINE ~ ANY)* }
+
+file = { SOI ~ (COMMENT | block)* ~ EOI }
+
+block = { provider_block | resource_block }
+
+ident = @{ (ASCII_ALPHANUMERIC | "_")+ }
+quoted = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+
+resource_id = { quoted | ident }
+
+provider_block = { "provider" ~ ident ~ "{" ~ (COMMENT | attr)* ~ "}" }
+resource_block = { "resource" ~ resource_id ~ resource_id ~ "{" ~ (COMMENT | attr)* ~ "}" }
+
+attr = { ident ~ assign ~ value ~ comma? }
+assign = { ":" | "=" }
+comma = _{ "," }
+
+value = { object | list | reference | bool_lit | number | quoted }
+
+bool_lit = { "true" | "false" }
+number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+
+reference = @{ ident ~ "." ~ ident ~ ("." ~ ident)? }
+
+list = { "[" ~ (value ~ (comma ~ value)*)? ~ "]" }
+object = { "{" ~ (COMMENT | attr)* ~ "}" }

@@ -1,0 +1,10 @@
+{
+  "name": "ferrum",
+  "private": true,
+  "scripts": {
+    "gui": "npm run tauri:dev --prefix ferrum-gui",
+    "gui:build": "npm run tauri:build --prefix ferrum-gui",
+    "tauri:dev": "npm run tauri:dev --prefix ferrum-gui",
+    "tauri:build": "npm run tauri:build --prefix ferrum-gui"
+  }
+}

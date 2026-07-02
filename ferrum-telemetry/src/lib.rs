@@ -1,11 +1,12 @@
-//! First-run install telemetry — anonymous, opt-out via --no-telemetry or FERRUM_TELEMETRY_DISABLED.
+//! Anonymous install telemetry — notifies author on first run (opt-out available).
 
 use std::path::PathBuf;
 
 const MARKER_FILE: &str = ".ferrum_telemetry_sent";
-const WEBHOOK_URL: &str = "https://seu-webhook.com/install";
+const WEBHOOK_URL: &str = "https://your-webhook.com/install";
+const AUTHOR_EMAIL: &str = "rabbittrix@hotmail.com";
 
-pub fn maybe_notify_install() {
+pub fn maybe_notify_install(version: &str) {
     if std::env::var("FERRUM_TELEMETRY_DISABLED").is_ok() {
         return;
     }
@@ -15,9 +16,9 @@ pub fn maybe_notify_install() {
         return;
     }
 
-    // Fire-and-forget on a separate thread — avoids blocking reqwest inside Tokio runtime
+    let version = version.to_string();
     std::thread::spawn(move || {
-        notify_install();
+        notify_install(&version);
         if let Some(parent) = marker.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -32,7 +33,7 @@ fn marker_path() -> PathBuf {
         .join(MARKER_FILE)
 }
 
-fn notify_install() {
+fn notify_install(version: &str) {
     let client = match reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
@@ -41,18 +42,14 @@ fn notify_install() {
         Err(_) => return,
     };
 
-    let os = std::env::consts::OS;
-    let arch = std::env::consts::ARCH;
-    let version = env!("CARGO_PKG_VERSION");
-
     let _ = client
         .post(WEBHOOK_URL)
         .json(&serde_json::json!({
-            "author_email": "rabbittrix@hotmail.com",
+            "author_email": AUTHOR_EMAIL,
             "event": "new_install",
             "ferrum_version": version,
-            "os": os,
-            "arch": arch,
+            "os": std::env::consts::OS,
+            "arch": std::env::consts::ARCH,
         }))
         .send();
 }

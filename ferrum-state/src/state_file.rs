@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{decrypt, encrypt, derive_key_from_passphrase, generate_key, EncryptionKey, EncryptedBlob};
+use crate::crypto::{
+    decrypt_state, encrypt_state, derive_key_from_passphrase, generate_key,
+    parse_key_hex as crypto_parse_key_hex, EncryptionKey, EncryptedBlob,
+};
 use crate::error::{Result, StateError};
 use crate::resource::{ResourceInstance, SecretValue};
 
@@ -50,6 +53,9 @@ struct StateEnvelope {
 pub struct StateBody {
     pub resources: Vec<ResourceInstance>,
     pub outputs: HashMap<String, serde_json::Value>,
+    /// Project-level secrets — individually encrypted, never plain text on disk.
+    #[serde(default)]
+    pub vault: HashMap<String, SecretValue>,
 }
 
 impl Default for StateBody {
@@ -57,6 +63,7 @@ impl Default for StateBody {
         Self {
             resources: Vec::new(),
             outputs: HashMap::new(),
+            vault: HashMap::new(),
         }
     }
 }
@@ -139,7 +146,7 @@ impl State {
         self.metadata.serial += 1;
 
         let body_json = serde_json::to_vec(&self.body)?;
-        let encrypted_body = encrypt(&self.key, &body_json)?;
+        let encrypted_body = encrypt_state(&self.key, &body_json)?;
 
         let envelope = StateEnvelope {
             metadata: self.metadata.clone(),
@@ -173,7 +180,7 @@ impl State {
             resolve_auto_key(&path)?
         };
 
-        let body_bytes = decrypt(&key, &envelope.encrypted_body)?;
+        let body_bytes = decrypt_state(&key, &envelope.encrypted_body)?;
         let body: StateBody =
             serde_json::from_slice(&body_bytes).map_err(|e| StateError::InvalidFormat(e.to_string()))?;
 
@@ -200,14 +207,57 @@ impl State {
 
     /// Encrypt a secret string for storage inside a resource.
     pub fn encrypt_secret(&self, plaintext: &str) -> Result<SecretValue> {
-        let blob = encrypt(&self.key, plaintext.as_bytes())?;
+        let blob = encrypt_state(&self.key, plaintext.as_bytes())?;
         Ok(SecretValue::from_encrypted(blob))
     }
 
     /// Decrypt a secret value (in memory only).
     pub fn decrypt_secret(&self, secret: &SecretValue) -> Result<String> {
-        let bytes = decrypt(&self.key, &secret.encrypted)?;
+        let bytes = decrypt_state(&self.key, &secret.encrypted)?;
         String::from_utf8(bytes).map_err(|e| StateError::Decryption(e.to_string()))
+    }
+
+    /// List vault secret names (values remain encrypted).
+    pub fn vault_names(&self) -> Vec<String> {
+        let mut names: Vec<_> = self.body.vault.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// Read a decrypted vault secret.
+    pub fn vault_get(&self, name: &str) -> Result<String> {
+        let secret = self
+            .body
+            .vault
+            .get(name)
+            .ok_or_else(|| StateError::NotFound(format!("vault secret '{name}'")))?;
+        self.decrypt_secret(secret)
+    }
+
+    /// Store or update a vault secret (encrypted before persist).
+    pub fn vault_set(&mut self, name: &str, plaintext: &str) -> Result<()> {
+        let secret = self.encrypt_secret(plaintext)?;
+        self.body.vault.insert(name.to_string(), secret);
+        Ok(())
+    }
+
+    /// Remove a vault secret.
+    pub fn vault_remove(&mut self, name: &str) -> Result<()> {
+        self.body
+            .vault
+            .remove(name)
+            .ok_or_else(|| StateError::NotFound(format!("vault secret '{name}'")))?;
+        Ok(())
+    }
+
+    /// Ensure default vault keys exist (empty placeholders).
+    pub fn vault_ensure_defaults(&mut self) -> Result<()> {
+        for key in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "DB_PASSWORD"] {
+            if !self.body.vault.contains_key(key) {
+                self.vault_set(key, "")?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -226,15 +276,7 @@ fn resolve_auto_key(state_path: &Path) -> Result<EncryptionKey> {
 }
 
 fn parse_key_hex(key_hex: &str) -> Result<EncryptionKey> {
-    let bytes = hex::decode(key_hex.trim()).map_err(|e| StateError::Decryption(e.to_string()))?;
-    if bytes.len() != 32 {
-        return Err(StateError::Decryption(
-            "encryption key must be 32 bytes (64 hex chars)".into(),
-        ));
-    }
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&bytes);
-    Ok(EncryptionKey::from_bytes(key))
+    crypto_parse_key_hex(key_hex).map_err(|e| StateError::Decryption(e.to_string()))
 }
 
 #[cfg(test)]

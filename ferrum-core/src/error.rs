@@ -2,6 +2,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
+    #[error("parse error: {0}")]
+    Parse(#[from] ferrum_parser::ParseError),
+
+    #[error("resolve error: {0}")]
+    Resolve(#[from] ferrum_resolver::ResolveError),
+
     #[error("state error: {0}")]
     State(#[from] ferrum_state::StateError),
 

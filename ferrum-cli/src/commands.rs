@@ -1,14 +1,16 @@
-use std::fs;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use ferrum_core::{format_plan, import_tfstate as core_import_tfstate, Engine};
+use ferrum_core::{
+    format_plan_colored, import_tfstate as core_import_tfstate, load_project, plan_cost_estimate,
+    save_plan_graph, Engine,
+};
 use ferrum_state::{State, STATE_FILENAME};
 
 pub fn init(path: &str, passphrase: Option<&str>) -> Result<()> {
     let dir = Path::new(path);
     if !dir.exists() {
-        fs::create_dir_all(dir).context("create project directory")?;
+        std::fs::create_dir_all(dir).context("create project directory")?;
     }
 
     let state_path = dir.join(STATE_FILENAME);
@@ -45,7 +47,7 @@ file = "ferrum.fstate"
 # Set to true to disable anonymous install notification
 disabled = false
 "#;
-        fs::write(&config_path, config)?;
+        std::fs::write(&config_path, config)?;
     }
 
     println!("✓ Ferrum initialized at {}", dir.display());
@@ -56,29 +58,56 @@ disabled = false
     Ok(())
 }
 
+fn project_dir_for_state(state_path: &str) -> std::path::PathBuf {
+    ferrum_core::find_project_dir(Path::new(state_path))
+}
+
 pub async fn plan(state_path: &str, passphrase: Option<&str>) -> Result<()> {
+    let project = load_project(&project_dir_for_state(state_path)).context("load .fe configuration")?;
+
     let state = State::load(state_path, passphrase).context("load state")?;
-    let engine = Engine::new(state);
-    // Demo: empty desired config shows current state as unchanged
-    let desired = engine.state.resources().to_vec();
-    let mut engine = engine;
-    let plan = engine.plan(&desired).context("compute plan")?;
-    print!("{}", format_plan(&plan));
+    let mut engine = Engine::new(state);
+    let plan = engine
+        .plan(&project.resources)
+        .context("compute plan")?;
+
+    print!("{}", format_plan_colored(&plan));
+
+    let cost = plan_cost_estimate(&plan);
+    if plan.has_changes() {
+        println!("\n💰 Cost Estimate: {}", cost.summary);
+        println!("   Monthly delta: ${:.2}/mo", cost.monthly_delta_usd);
+    } else {
+        println!("\nNo changes. Infrastructure matches configuration.");
+    }
+
+    let graph_path = save_plan_graph(Path::new(state_path), &project.resources)
+        .context("write infrastructure graph")?;
+    println!(
+        "\n📊 Graph: {} ({} resources, {} execution steps)",
+        graph_path.display(),
+        project.resources.len(),
+        project.execution_plan.order.len()
+    );
+
     Ok(())
 }
 
 pub async fn apply(state_path: &str, passphrase: Option<&str>, auto_approve: bool) -> Result<()> {
+    let project = load_project(&project_dir_for_state(state_path)).context("load .fe configuration")?;
+
     let state = State::load(state_path, passphrase).context("load state")?;
-    let desired = state.resources().to_vec();
     let mut engine = Engine::new(state);
-    let plan = engine.plan(&desired).context("compute plan")?;
+    let plan = engine
+        .plan(&project.resources)
+        .context("compute plan")?;
 
     if !plan.has_changes() {
         println!("No changes. Infrastructure is up-to-date.");
         return Ok(());
     }
 
-    print!("{}", format_plan(&plan));
+    print!("{}", format_plan_colored(&plan));
 
     if !auto_approve {
         println!("\nApply these changes? [y/N] ");
@@ -90,8 +119,13 @@ pub async fn apply(state_path: &str, passphrase: Option<&str>, auto_approve: boo
         }
     }
 
-    engine.apply(&plan, &desired).context("apply plan")?;
+    engine
+        .apply(&plan, &project.resources)
+        .context("apply plan")?;
+    let graph_path = save_plan_graph(Path::new(state_path), &project.resources)
+        .context("write infrastructure graph")?;
     println!("✓ Apply complete. State saved to {}", state_path);
+    println!("  Graph: {}", graph_path.display());
     Ok(())
 }
 
@@ -115,6 +149,8 @@ pub fn import_cmd(tfstate: &str, output: &str, passphrase: Option<&str>) -> Resu
     }
     println!("  Terraform state version: {}", report.tf_version);
     println!("  Output: {} (AES-256-GCM encrypted)", output);
+    println!("  Graph:  {} ({} dependency edges)", report.graph_path.display(), report.edge_count);
+    println!("  Open Dashboard to visualize infrastructure graph");
     Ok(())
 }
 

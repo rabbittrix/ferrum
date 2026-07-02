@@ -21,24 +21,52 @@ Ferrum is a high-performance, memory-safe IaC tool written in Rust, designed to 
 
 ---
 
-## Architecture
+## Architecture — Data Flow
 
-```Rust
-ferrum/
-├── ferrum-core/           # Engine: dependency graph, plan/apply, concurrency
-├── ferrum-state/          # AES-256-GCM encrypted ferrum.fstate
-├── ferrum-cli/            # CLI: init, plan, apply, import, refresh
-├── ferrum-provider-bridge/# gRPC bridge to Terraform Go providers
-└── ferrum-gui/            # Tauri + Next.js desktop dashboard
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  .fe files  │────▶│  ferrum-parser   │────▶│ ferrum-resolver │  order: VPC → Subnet → Instance
+│ (typed)     │     │  type-check      │     │  DAG graph      │
+└─────────────┘     └──────────────────┘     └────────┬────────┘
+                                                      │
+┌─────────────┐     ┌──────────────────┐              ▼
+│ ferrum.fstate│◀───│   ferrum-core    │◀──── ferrum plan / apply / refresh
+│ (AES-256)   │     │  Tokio + Rayon   │      (5–10× faster refresh)
+└─────────────┘     └────────┬─────────┘
+                             │
+                    ┌────────▼─────────┐
+                    │  ferrum-gui      │  real-time graph
+                    │  (Tauri)         │  🔵 creating · 🟢 ok · 🔴 error · 🔐 vault
+                    └──────────────────┘
 ```
 
-### Key Features
+```text
+ferrum/
+├── ferrum-parser/         # Strongly typed .fe language
+├── ferrum-resolver/       # Creation order (VPC → Subnet → Instance)
+├── ferrum-crypto/         # AES-256-GCM (state + vault)
+├── ferrum-core/           # Engine: drift, cost, lock, AI, import
+├── ferrum-state/          # Encrypted ferrum.fstate
+├── ferrum-telemetry/      # Anonymous install notification
+├── ferrum-cli/            # init, plan, apply, import, refresh
+├── ferrum-provider-bridge/# gRPC → Terraform providers (Go)
+└── ferrum-gui/            # Dashboard Tauri + Next.js
+```
 
-- **Zero-Trust State** — `ferrum.fstate` is encrypted with AES-256-GCM. Secrets never touch disk in plain text.
-- **Smart Refactoring** — Resources tracked by cloud-native UIDs. Rename in code without destroy/recreate.
-- **Fearless Concurrency** — Parallel cloud-state refresh via Tokio and Rayon.
-- **Terraform Migration** — `ferrum import <terraform.tfstate>` converts JSON state to encrypted Ferrum format.
-- **Provider Bridge** — gRPC interface to existing Terraform providers (AWS, Azure, GCP on day one).
+### Killer Features
+
+| Feature | Description |
+|---|---|
+| **Drift Detection** | Alerts when resources are changed manually in the cloud |
+| **Cost Estimation** | Monthly cost estimate on Plan (Infracost integration) |
+| **Ferrum Vault** | Secrets never in plain text — 🔐 icon on graph nodes |
+| **State Locking** | Distributed lock (S3/DynamoDB or native server) for teams |
+| **Ferrum AI** | Diagnosis: "Why did aws_instance.web fail?" |
+| **Smart Import** | `ferrum import terraform.tfstate` → generates `ferrum.graph.json` automatically |
+
+### Providers: plugin architecture from day one
+
+Ferrum uses a **gRPC plugin architecture** (`ferrum-provider-bridge`). AWS, Azure, and GCP are bundled official providers — any service can be added with a Go plugin compatible with Terraform.
 
 ---
 
@@ -112,6 +140,44 @@ Or set `FERRUM_STATE_KEY` (64-char hex) for CI/CD pipelines.
 
 ---
 
+## Ferrum Language (`.fe`)
+
+Declarative syntax — hybrid between HCL and Rust-like structs for type safety. Parsed with **pest**, validated against provider schemas, and resolved into a **DAG** before plan/apply.
+
+### Example
+
+```ferrum
+resource "aws_vpc" "main" {
+    cidr_block: "10.0.0.0/16",
+    enable_dns_support: true,
+    tags: {
+        name: "Production-VPC"
+    }
+}
+
+resource "aws_subnet" "public" {
+    vpc_id: aws_vpc.main.id,   // typed cross-resource reference
+    cidr_block: "10.0.1.0/24"
+}
+```
+
+### Syntax rules
+
+| Feature | Supported |
+|---|---|
+| Attribute assignment | `key: value` or `key = value` |
+| Resource headers | `resource type name` or `resource "type" "name"` |
+| Values | strings, numbers, booleans, lists, nested objects |
+| References | `aws_vpc.main.id` (type-checked against symbol table) |
+| Comments | `// line comments` |
+| Validation errors | exact **line and column** (e.g. missing required fields) |
+
+`ferrum plan` reads all `*.fe` files in the project directory, validates them, diffs against encrypted `ferrum.fstate`, prints a **color-coded plan**, and writes `ferrum.graph.json` for the Dashboard graph view.
+
+See [`infra.fe`](infra.fe) for a full multi-resource example.
+
+---
+
 ## CLI Reference
 
 | Command | Description |
@@ -136,7 +202,11 @@ Or set `FERRUM_STATE_KEY` (64-char hex) for CI/CD pipelines.
 
 Cyber-Industrial Dark theme — deep space blues, neon cyan accents, Rust orange actions.
 
-```bash
+```powershell
+# From the project root:
+npm run tauri:dev
+
+# Or directly:
 cd ferrum-gui
 npm install
 npm run tauri:dev
