@@ -335,13 +335,8 @@ pub fn parse_fe_dir(dir: &Path) -> Result<FeFile> {
     paths.sort();
 
     if paths.is_empty() {
-        return Err(ParseError::Syntax {
-            line: 1,
-            column: 1,
-            message: format!(
-                "no .fe configuration files found in {}",
-                dir.display()
-            ),
+        return Err(ParseError::NoConfigFiles {
+            dir: dir.display().to_string(),
         });
     }
 
@@ -417,5 +412,21 @@ resource aws_subnet public {
 "#;
         let err = parse_fe_source(src).unwrap_err();
         assert!(err.to_string().contains("aws_vpc.missing"));
+    }
+
+    #[test]
+    fn empty_dir_returns_no_config_files_not_syntax_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = parse_fe_dir(dir.path()).unwrap_err();
+        match err {
+            ParseError::NoConfigFiles { ref dir } => {
+                assert!(!dir.is_empty());
+                let msg = err.to_string();
+                assert!(msg.contains("No Ferrum configuration files"));
+                assert!(msg.contains("ferrum init"));
+                assert!(!msg.contains("syntax error"));
+            }
+            other => panic!("expected NoConfigFiles, got {other:?}"),
+        }
     }
 }

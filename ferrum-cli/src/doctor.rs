@@ -28,6 +28,9 @@ fn check_update(version: &str) -> HealthCheck {
                 name: "update_available".into(),
                 status: CheckStatus::Warn,
                 message: "Could not check for updates (offline)".into(),
+                fix_hint: None,
+                help_url: None,
+                config_path: None,
             };
         }
     };
@@ -50,12 +53,18 @@ fn check_update(version: &str) -> HealthCheck {
                     name: "update_available".into(),
                     status: CheckStatus::Warn,
                     message: format!("Update available: v{latest} (you have v{version})"),
+                    fix_hint: None,
+                    help_url: Some("https://github.com/rabbittrix/ferrum/releases/latest".into()),
+                    config_path: None,
                 }
             } else {
                 HealthCheck {
                     name: "update_available".into(),
                     status: CheckStatus::Pass,
                     message: format!("Ferrum v{version} is up to date"),
+                    fix_hint: None,
+                    help_url: None,
+                    config_path: None,
                 }
             }
         }
@@ -63,6 +72,9 @@ fn check_update(version: &str) -> HealthCheck {
             name: "update_available".into(),
             status: CheckStatus::Warn,
             message: "Could not reach GitHub for update check".into(),
+            fix_hint: None,
+            help_url: None,
+            config_path: None,
         },
     }
 }
@@ -87,8 +99,4 @@ fn print_report(report: &DoctorReport) {
     } else {
         println!("System ready for Ferrum operations.");
     }
-}
-
-pub fn doctor_passed(report: &DoctorReport) -> bool {
-    !report.has_failures()
 }

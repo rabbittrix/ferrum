@@ -18,6 +18,36 @@ pub struct HealthCheck {
     pub name: String,
     pub status: CheckStatus,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fix_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub help_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_path: Option<String>,
+}
+
+impl HealthCheck {
+    fn new(name: impl Into<String>, status: CheckStatus, message: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            status,
+            message: message.into(),
+            fix_hint: None,
+            help_url: None,
+            config_path: None,
+        }
+    }
+
+    fn with_hints(mut self, fix: impl Into<String>, help: impl Into<String>) -> Self {
+        self.fix_hint = Some(fix.into());
+        self.help_url = Some(help.into());
+        self
+    }
+
+    fn with_config(mut self, path: impl Into<String>) -> Self {
+        self.config_path = Some(path.into());
+        self
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -48,6 +78,9 @@ pub fn run_doctor(version: &str) -> DoctorReport {
     checks.push(check_docker_socket());
     checks.push(check_rancher());
     checks.push(check_ferrum_state());
+    checks.push(check_project_files());
+    #[cfg(target_os = "linux")]
+    checks.push(check_linux_gui_deps());
 
     DoctorReport {
         checks,
@@ -68,19 +101,21 @@ fn check_path() -> HealthCheck {
     });
 
     if found {
-        HealthCheck {
-            name: "path".into(),
-            status: CheckStatus::Pass,
-            message: format!("`{exe}` is on the system PATH"),
-        }
+        HealthCheck::new("path", CheckStatus::Pass, format!("`{exe}` is on the system PATH"))
     } else {
-        HealthCheck {
-            name: "path".into(),
-            status: CheckStatus::Warn,
-            message: format!(
-                "`{exe}` not found on PATH — add the Ferrum install directory to PATH"
-            ),
-        }
+        HealthCheck::new(
+            "path",
+            CheckStatus::Warn,
+            format!("`{exe}` not found on PATH — add the Ferrum install directory to PATH"),
+        )
+        .with_hints(
+            if cfg!(windows) {
+                "Run: cargo install --path ferrum-cli --force  (or add target\\release to PATH)"
+            } else {
+                "Run: ./scripts/install-linux.sh  or  cargo install --path ferrum-cli --force"
+            },
+            "https://github.com/rabbittrix/ferrum/blob/main/MANUAL.md#installation",
+        )
     }
 }
 
@@ -90,16 +125,18 @@ fn check_cloud_credentials() -> Vec<HealthCheck> {
     let aws_id = std::env::var("AWS_ACCESS_KEY_ID").ok();
     let aws_secret = std::env::var("AWS_SECRET_ACCESS_KEY").ok();
     checks.push(match (&aws_id, &aws_secret) {
-        (Some(id), Some(_)) if !id.is_empty() => HealthCheck {
-            name: "aws_credentials".into(),
-            status: CheckStatus::Pass,
-            message: "AWS credentials detected (AWS_ACCESS_KEY_ID)".into(),
-        },
-        _ => HealthCheck {
-            name: "aws_credentials".into(),
-            status: CheckStatus::Warn,
-            message: "AWS credentials not set — export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY".into(),
-        },
+        (Some(id), Some(_)) if !id.is_empty() => {
+            HealthCheck::new("aws_credentials", CheckStatus::Pass, "AWS credentials detected (AWS_ACCESS_KEY_ID)")
+        }
+        _ => HealthCheck::new(
+            "aws_credentials",
+            CheckStatus::Warn,
+            "AWS credentials not set — export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY",
+        )
+        .with_hints(
+            "Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in your shell profile",
+            "https://github.com/rabbittrix/ferrum/blob/main/MANUAL.md#aws",
+        ),
     });
 
     let azure = std::env::var("ARM_CLIENT_ID")
@@ -107,37 +144,31 @@ fn check_cloud_credentials() -> Vec<HealthCheck> {
         .filter(|s| !s.is_empty())
         .or_else(|| std::env::var("AZURE_CLIENT_ID").ok().filter(|s| !s.is_empty()));
     checks.push(match azure {
-        Some(_) => HealthCheck {
-            name: "azure_credentials".into(),
-            status: CheckStatus::Pass,
-            message: "Azure credentials detected".into(),
-        },
-        None => HealthCheck {
-            name: "azure_credentials".into(),
-            status: CheckStatus::Warn,
-            message: "Azure credentials not set — use ARM_* or AZURE_* variables".into(),
-        },
+        Some(_) => HealthCheck::new("azure_credentials", CheckStatus::Pass, "Azure credentials detected"),
+        None => HealthCheck::new(
+            "azure_credentials",
+            CheckStatus::Warn,
+            "Azure credentials not set — use ARM_* or AZURE_* variables",
+        ),
     });
 
     let gcp = std::env::var("GOOGLE_APPLICATION_CREDENTIALS")
         .ok()
         .filter(|s| !s.is_empty());
     checks.push(match gcp {
-        Some(path) if Path::new(&path).exists() => HealthCheck {
-            name: "gcp_credentials".into(),
-            status: CheckStatus::Pass,
-            message: format!("GCP service account file found at {path}"),
-        },
-        Some(path) => HealthCheck {
-            name: "gcp_credentials".into(),
-            status: CheckStatus::Warn,
-            message: format!("GOOGLE_APPLICATION_CREDENTIALS set but file missing: {path}"),
-        },
-        None => HealthCheck {
-            name: "gcp_credentials".into(),
-            status: CheckStatus::Warn,
-            message: "GCP credentials not set — export GOOGLE_APPLICATION_CREDENTIALS".into(),
-        },
+        Some(path) if Path::new(&path).exists() => {
+            HealthCheck::new("gcp_credentials", CheckStatus::Pass, format!("GCP service account file found at {path}"))
+        }
+        Some(path) => HealthCheck::new(
+            "gcp_credentials",
+            CheckStatus::Warn,
+            format!("GOOGLE_APPLICATION_CREDENTIALS set but file missing: {path}"),
+        ),
+        None => HealthCheck::new(
+            "gcp_credentials",
+            CheckStatus::Warn,
+            "GCP credentials not set — export GOOGLE_APPLICATION_CREDENTIALS",
+        ),
     });
 
     checks
@@ -170,17 +201,17 @@ fn check_docker_socket() -> HealthCheck {
         } else {
             "docker CLI reachable"
         };
-        HealthCheck {
-            name: "docker".into(),
-            status: CheckStatus::Pass,
-            message: format!("Docker detected ({via})"),
-        }
+        HealthCheck::new("docker", CheckStatus::Pass, format!("Docker detected ({via})"))
     } else {
-        HealthCheck {
-            name: "docker".into(),
-            status: CheckStatus::Warn,
-            message: "Docker not detected — install Docker Desktop or Rancher Desktop".into(),
-        }
+        HealthCheck::new(
+            "docker",
+            CheckStatus::Warn,
+            "Docker not detected — install Docker Desktop or Rancher Desktop to run smoke tests",
+        )
+        .with_hints(
+            "Install Docker Desktop (Windows) or Docker Engine (Linux), then restart Ferrum",
+            "https://github.com/rabbittrix/ferrum/blob/main/MANUAL.md#docker-local",
+        )
     }
 }
 
@@ -193,16 +224,50 @@ pub fn detect_rancher_endpoint() -> Option<String> {
 
 fn check_rancher() -> HealthCheck {
     match detect_rancher_endpoint() {
-        Some(url) => HealthCheck {
-            name: "rancher".into(),
-            status: CheckStatus::Pass,
-            message: format!("Rancher endpoint configured: {url}"),
-        },
-        None => HealthCheck {
-            name: "rancher".into(),
-            status: CheckStatus::Warn,
-            message: "Rancher not configured — set RANCHER_URL for K8s orchestration".into(),
-        },
+        Some(url) => HealthCheck::new("rancher", CheckStatus::Pass, format!("Rancher endpoint configured: {url}")),
+        None => HealthCheck::new(
+            "rancher",
+            CheckStatus::Warn,
+            "Rancher not configured — set RANCHER_URL for K8s orchestration",
+        ),
+    }
+}
+
+fn count_fe_files(dir: &Path) -> usize {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .is_some_and(|ext| ext == "fe")
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn check_project_files() -> HealthCheck {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let count = count_fe_files(&cwd);
+    if count > 0 {
+        HealthCheck::new(
+            "project_files",
+            CheckStatus::Pass,
+            format!("Found {count} .fe configuration file(s) in {}", cwd.display()),
+        )
+    } else {
+        HealthCheck::new(
+            "project_files",
+            CheckStatus::Warn,
+            "No .fe configuration files in the current directory — Ferrum needs at least one to plan or apply",
+        )
+        .with_hints(
+            "Run: ferrum init  (or ferrum init --template docker-local)",
+            "MANUAL.md#getting-started",
+        )
+        .with_config("main.fe")
     }
 }
 
@@ -210,17 +275,43 @@ fn check_ferrum_state() -> HealthCheck {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let state = cwd.join("ferrum.fstate");
     if state.exists() {
-        HealthCheck {
-            name: "project_state".into(),
-            status: CheckStatus::Pass,
-            message: format!("State file found: {}", state.display()),
-        }
+        HealthCheck::new("project_state", CheckStatus::Pass, format!("State file found: {}", state.display()))
     } else {
-        HealthCheck {
-            name: "project_state".into(),
-            status: CheckStatus::Warn,
-            message: "No ferrum.fstate in current directory — run `ferrum init`".into(),
-        }
+        HealthCheck::new(
+            "project_state",
+            CheckStatus::Warn,
+            "No ferrum.fstate in current directory — run `ferrum init`",
+        )
+        .with_hints("Run: ferrum init --template docker-local", "MANUAL.md#getting-started")
+        .with_config("ferrum.json")
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn check_linux_gui_deps() -> HealthCheck {
+    let webkit = Command::new("pkg-config")
+        .args(["--exists", "webkit2gtk-4.1"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+        || Command::new("pkg-config")
+            .args(["--exists", "webkit2gtk-4.0"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+    if webkit {
+        HealthCheck::new("linux_gui_deps", CheckStatus::Pass, "webkit2gtk detected (Tauri GUI supported)")
+    } else {
+        HealthCheck::new(
+            "linux_gui_deps",
+            CheckStatus::Warn,
+            "webkit2gtk not found — required to build/run Ferrum GUI on Linux",
+        )
+        .with_hints(
+            "Ubuntu/Debian: sudo apt install libwebkit2gtk-4.1-dev build-essential",
+            "https://v2.tauri.app/start/prerequisites/#linux",
+        )
     }
 }
 

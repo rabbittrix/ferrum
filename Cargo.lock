@@ -1168,9 +1168,11 @@ dependencies = [
 name = "ferrum-gui"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "ferrum-core",
  "ferrum-provider-bridge",
  "ferrum-state",
+ "ferrum-telemetry",
  "serde",
  "serde_json",
  "tauri",

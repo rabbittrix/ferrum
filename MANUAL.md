@@ -9,22 +9,65 @@ Ferrum is a next-generation Infrastructure as Code (IaC) tool written in Rust. I
 
 ## Quick Start
 
+### Four-step first-run verification
+
+Use the **GUI Dashboard** (recommended) or the CLI:
+
+| Step | GUI | CLI |
+|------|-----|-----|
+| 1. Doctor | **Doctor** panel → run checks; use **Fix It** / **Help** on warnings | `ferrum doctor` |
+| 2. Init | **Terminal** → `ferrum init --template docker-local` | `ferrum init --template docker-local` |
+| 3. Graph | **Graph** panel — preview dependencies | `ferrum plan` |
+| 4. Apply | **Apply** (header) or **Smoke Test** for Docker hello-world | `ferrum apply` |
+
 ```bash
-# 1. Verify your environment
+# CLI quick start
 ferrum doctor
-
-# 2. Initialize a project (with template)
 ferrum init --template aws-web-app
-
-# 3. Preview changes
 ferrum plan
-
-# 4. Apply infrastructure
 ferrum apply
-
-# 5. Tear down
 ferrum destroy
 ```
+
+---
+
+## Installation
+
+### Windows
+
+```powershell
+cargo install --path ferrum-cli --force
+ferrum doctor
+```
+
+Ensure `%USERPROFILE%\.cargo\bin` is on PATH (Rust installer usually adds this).
+
+### Linux
+
+```bash
+chmod +x scripts/install-linux.sh
+./scripts/install-linux.sh          # /usr/local/bin
+./scripts/install-linux.sh --user   # ~/.local/bin
+```
+
+**GUI build prerequisites (Linux):**
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev build-essential libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev pkg-config
+```
+
+---
+
+## Building for Linux
+
+Build the desktop app on a **Linux machine**:
+
+```bash
+cd ferrum-gui && npm install && npm run tauri:build
+```
+
+Bundles: `src-tauri/target/release/bundle/deb/` and `.../appimage/`.
 
 ---
 
@@ -44,6 +87,8 @@ ferrum destroy
 | `ferrum import <tfstate>` | Import Terraform state |
 | `ferrum provider install aws` | Install Terraform provider |
 | `ferrum provider list` | List installed providers |
+| `ferrum test-drive` | Hidden: Docker smoke test (nginx hello-world) |
+| `ferrum test-drive --cleanup` | Remove smoke test project and container |
 
 ### Global flags
 
@@ -226,21 +271,50 @@ On first `ferrum init`, Ferrum auto-detects Docker/Rancher and writes `orchestra
 
 ## GUI Dashboard
 
-Launch the Tauri dashboard from `ferrum-gui/`:
+Launch from `ferrum-gui/`:
 
 ```bash
-cd ferrum-gui && npm run tauri dev
+cd ferrum-gui && npm run tauri:dev
 ```
 
-- **Graph panel:** dependency visualization; click **?** for help
-- **Apply colors:** yellow = in progress, green = success, red = failed
-- **Vault panel:** manage encrypted secrets in state
+Production build:
+
+```bash
+npm run tauri:build
+```
+
+### Integrated Terminal vs. external shell
+
+| | Integrated Terminal (GUI) | PowerShell / Bash |
+|--|---------------------------|-------------------|
+| **Use when** | First-run verification, quick `ferrum` commands from the dashboard | Scripting, CI, full shell features |
+| **Binary** | Auto-resolves `ferrum.exe` / `ferrum` (sibling, cargo bin, PATH) | Your installed `ferrum` on PATH |
+| **Output** | Real-time ANSI-colored stream via Tauri events | Native terminal |
+| **Examples** | `ferrum doctor`, `ferrum init --template docker-local` | Same commands |
+
+Set `FERRUM_BIN` to override the CLI path used by the integrated terminal.
+
+### Panels
+
+- **Doctor** — interactive health checks with **Fix It** and **Help** on warnings
+- **Smoke Test** — one-click Docker hello-world (`ferrum test-drive`); **Auto-Cleanup** removes `.ferrum-smoke-test`
+- **Terminal** — xterm.js shell wired to real `ferrum-cli` subprocesses
+- **Graph** — dependency visualization; **?** for help; apply colors (yellow / green / red)
+- **Vault** — encrypted secrets in state
+
+If Docker is not running, Smoke Test shows: *Install Docker to run a test.*
 
 ---
 
 ## Telemetry
 
-On the **first successful** `ferrum doctor` or `ferrum init`, Ferrum sends a one-time anonymous HTTPS notification to the author (`rabbittrix@hotmail.com`) with OS, version, and installed providers. No personal data is collected.
+On the **first successful** `ferrum doctor`, `ferrum init`, or **successful smoke test**, Ferrum sends a one-time anonymous HTTPS notification to the author (`rabbittrix@hotmail.com`) with:
+
+- OS family (Windows / Linux / macOS) and architecture
+- Ferrum version and installed providers
+- Whether the **smoke test** succeeded (`smoke_test_success: true/false`)
+
+No personal data is collected.
 
 Opt out:
 
@@ -259,7 +333,9 @@ export FERRUM_TELEMETRY_DISABLED=1
 | `ferrum` not found | Add cargo bin dir to PATH; run `ferrum doctor` |
 | Lock held | Wait for other apply to finish or delete `ferrum.fstate.lock` |
 | Provider errors | `ferrum provider install aws` + verify credentials |
-| Docker not detected | Start Docker Desktop; on Windows use named pipe |
+| Docker not detected | Start Docker Desktop; on Windows use named pipe; use **Smoke Test** panel alert |
+| Linux GUI won't build | Install webkit2gtk; run `ferrum doctor` for **linux_gui_deps** |
+| Integrated terminal empty | Run the Ferrum desktop app (not `next dev` alone) |
 
 ---
 

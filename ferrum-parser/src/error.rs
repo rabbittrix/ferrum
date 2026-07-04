@@ -17,6 +17,11 @@ pub enum ParseError {
         message: String,
     },
 
+    #[error(
+        "No Ferrum configuration files (.fe) found in this directory.\n  Directory: {dir}\n  Try running `ferrum init` to create a project or `ferrum test-drive` to see a demo."
+    )]
+    NoConfigFiles { dir: String },
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }

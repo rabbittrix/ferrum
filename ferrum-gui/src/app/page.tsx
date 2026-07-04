@@ -5,11 +5,16 @@ import { InfrastructureGraph, type GraphNode } from '@/components/Infrastructure
 import { PlanPanel, type PlanWithCost } from '@/components/PlanPanel';
 import { Sidebar } from '@/components/Sidebar';
 import { VaultPanel } from '@/components/VaultPanel';
+import { TerminalPanel } from '@/components/TerminalPanel';
+import { DoctorPanel } from '@/components/DoctorPanel';
+import { SmokeTestPanel } from '@/components/SmokeTestPanel';
 
 const STATE_PATH: string | null = null;
 
 export default function Dashboard() {
-  const [activePanel, setActivePanel] = useState<'graph' | 'vault' | 'history'>('graph');
+  const [activePanel, setActivePanel] = useState<
+    'graph' | 'vault' | 'history' | 'terminal' | 'doctor' | 'smoke'
+  >('doctor');
   const [applying, setApplying] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [plan, setPlan] = useState<PlanWithCost | null>(null);
@@ -171,6 +176,20 @@ export default function Dashboard() {
           <VaultPanel
             statePath={statePath}
             onError={(msg) => setStatusMessage(msg)}
+            onStatus={(msg) => setStatusMessage(msg)}
+          />
+        )}
+        {activePanel === 'doctor' && (
+          <DoctorPanel onRunInTerminal={() => setActivePanel('terminal')} />
+        )}
+        {activePanel === 'terminal' && <TerminalPanel cwd={statePath} />}
+        {activePanel === 'smoke' && (
+          <SmokeTestPanel
+            onGraphUpdate={(path) => {
+              setGraphPath(path);
+              reloadGraph();
+              setActivePanel('graph');
+            }}
             onStatus={(msg) => setStatusMessage(msg)}
           />
         )}

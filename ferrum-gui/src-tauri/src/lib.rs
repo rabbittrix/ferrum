@@ -1,18 +1,39 @@
 mod vault;
+mod terminal;
+
+use std::path::PathBuf;
 
 use ferrum_core::{
-    apply_with_providers, format_plan, load_project_for_state, plan_cost_estimate, save_plan_graph,
-    ChangeAction, CostEstimate, Engine, InfrastructureGraph, NodeStatus, Plan, GRAPH_FILENAME,
+    apply_with_providers, cleanup_smoke_test, format_plan, load_project_for_state,
+    plan_cost_estimate, run_doctor, run_smoke_test, save_plan_graph, ChangeAction, CostEstimate,
+    detect_docker, DoctorReport, Engine, InfrastructureGraph, NodeStatus, Plan, SmokeTestResult,
+    GRAPH_FILENAME,
 };
 use ferrum_state::State;
 use serde::Serialize;
-use std::path::PathBuf;
 use tauri::Emitter;
 
 use vault::{
     resolve_state_path, vault_add_impl, vault_delete_impl, vault_list_impl, vault_reveal_impl,
     vault_set_impl, VaultListResponse, VaultRevealResponse,
 };
+
+use terminal::{ferrum_terminal_binary_path, ferrum_terminal_exec};
+
+/// Default workspace for MSI/Start Menu launches (not Program Files).
+fn default_workspace_dir() -> Option<PathBuf> {
+    let base = dirs::document_dir()
+        .or_else(dirs::home_dir)?
+        .join("FerrumProjects");
+    std::fs::create_dir_all(&base).ok()?;
+    Some(base)
+}
+
+fn set_default_working_dir() {
+    if let Some(dir) = default_workspace_dir() {
+        let _ = std::env::set_current_dir(&dir);
+    }
+}
 
 #[derive(Serialize)]
 pub struct PlanChangeItem {
@@ -293,8 +314,41 @@ fn ferrum_vault_delete(
     vault_delete_impl(name, state_path, passphrase)
 }
 
+#[tauri::command]
+fn ferrum_doctor(version: Option<String>) -> Result<DoctorReport, String> {
+    let ver = version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    Ok(run_doctor(&ver))
+}
+
+#[tauri::command]
+async fn ferrum_test_drive(cleanup: bool) -> Result<SmokeTestResult, String> {
+    let base = std::env::current_dir().map_err(|e| e.to_string())?;
+    if cleanup {
+        cleanup_smoke_test(&base).await.map_err(|e| e.to_string())?;
+        return Ok(SmokeTestResult {
+            success: true,
+            message: "Smoke test cleaned up.".into(),
+            project_dir: ferrum_core::smoke_test_dir(&base),
+            graph_path: PathBuf::new(),
+            docker_available: detect_docker(),
+        });
+    }
+    run_smoke_test(&base).await.map_err(|e| e.to_string()).map(|result| {
+        if result.success {
+            ferrum_telemetry::maybe_notify_first_run(env!("CARGO_PKG_VERSION"), &[], Some(true));
+        }
+        result
+    })
+}
+
+#[tauri::command]
+fn ferrum_docker_available() -> bool {
+    detect_docker()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    set_default_working_dir();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
@@ -309,6 +363,11 @@ pub fn run() {
             ferrum_vault_set,
             ferrum_vault_add,
             ferrum_vault_delete,
+            ferrum_doctor,
+            ferrum_test_drive,
+            ferrum_docker_available,
+            ferrum_terminal_exec,
+            ferrum_terminal_binary_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ferrum GUI");

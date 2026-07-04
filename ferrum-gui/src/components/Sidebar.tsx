@@ -1,12 +1,17 @@
 'use client';
 
+type PanelId = 'graph' | 'vault' | 'history' | 'terminal' | 'doctor' | 'smoke';
+
 type Props = {
-  activePanel: 'graph' | 'vault' | 'history';
-  onNavigate: (panel: 'graph' | 'vault' | 'history') => void;
+  activePanel: PanelId;
+  onNavigate: (panel: PanelId) => void;
 };
 
 const NAV = [
   { id: 'graph' as const, label: 'Graph', icon: '⬡' },
+  { id: 'doctor' as const, label: 'Doctor', icon: '🩺' },
+  { id: 'smoke' as const, label: 'Smoke Test', icon: '🐳' },
+  { id: 'terminal' as const, label: 'Terminal', icon: '⌨' },
   { id: 'vault' as const, label: 'Vault', icon: '🔐' },
   { id: 'history' as const, label: 'History', icon: '⏱' },
 ];

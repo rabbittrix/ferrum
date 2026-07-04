@@ -45,6 +45,11 @@ pub fn find_project_dir(state_path: &Path) -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
+/// Returns true if `dir` contains at least one `.fe` file (non-recursive).
+pub fn has_fe_files(dir: &Path) -> bool {
+    dir_has_fe_files(dir)
+}
+
 fn dir_has_fe_files(dir: &Path) -> bool {
     std::fs::read_dir(dir)
         .map(|entries| {
@@ -59,7 +64,7 @@ fn dir_has_fe_files(dir: &Path) -> bool {
 
 /// Discover `.fe` files in `dir`, parse, validate, and build execution graph.
 pub fn load_project(dir: &Path) -> Result<LoadedProject> {
-    let mut config = parse_fe_dir(dir).map_err(CoreError::Parse)?;
+    let mut config = parse_fe_dir(dir)?;
     load_balancer::expand_load_balancers(&mut config);
     let execution_plan = resolve_fe(&config).map_err(CoreError::Resolve)?;
     let resources = fe_resources_to_instances(&config.resources);

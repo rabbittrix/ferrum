@@ -6,6 +6,27 @@ use anyhow::{bail, Context, Result};
 
 pub const TEMPLATE_NAMES: &[&str] = &["docker-local", "aws-web-app", "azure-k8s-cluster"];
 
+/// Default `main.fe` written by `ferrum init` (no template): commented examples only.
+pub const STARTER_MAIN_FE: &str = r#"// Ferrum infrastructure configuration
+// Author: Roberto de Souza
+//
+// Uncomment an example below, or scaffold a full project:
+//   ferrum init --template docker-local
+//   ferrum init --template aws-web-app
+
+// --- Docker example (local, requires Docker) ---
+// resource docker_container hello {
+//   name  = "ferrum-hello"
+//   image = "nginx:alpine"
+//   ports = ["8080:80"]
+// }
+
+// --- AWS example (requires AWS credentials) ---
+// resource aws_vpc main {
+//   cidr_block = "10.0.0.0/16"
+// }
+"#;
+
 pub fn apply_template(dir: &Path, template: &str) -> Result<()> {
     if !TEMPLATE_NAMES.contains(&template) {
         bail!(

@@ -14,6 +14,7 @@ const REQUIRED_ATTRS: &[(&str, &[&str])] = &[
     ("aws_security_group", &["name", "vpc_id"]),
     ("azurerm_resource_group", &["name", "location"]),
     ("google_compute_network", &["name"]),
+    ("docker_container", &["name", "image"]),
 ];
 
 #[derive(Debug, Default)]

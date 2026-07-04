@@ -2,8 +2,11 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
+    #[error("{0}")]
+    NoConfigFiles(String),
+
     #[error("parse error: {0}")]
-    Parse(#[from] ferrum_parser::ParseError),
+    Parse(ferrum_parser::ParseError),
 
     #[error("resolve error: {0}")]
     Resolve(#[from] ferrum_resolver::ResolveError),
@@ -31,3 +34,14 @@ pub enum CoreError {
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;
+
+impl From<ferrum_parser::ParseError> for CoreError {
+    fn from(e: ferrum_parser::ParseError) -> Self {
+        match e {
+            ferrum_parser::ParseError::NoConfigFiles { dir } => CoreError::NoConfigFiles(format!(
+                "No Ferrum configuration files (.fe) found in this directory.\n  Directory: {dir}\n  Try running `ferrum init` to create a project or `ferrum test-drive` to see a demo."
+            )),
+            other => CoreError::Parse(other),
+        }
+    }
+}

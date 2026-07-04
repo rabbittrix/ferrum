@@ -72,7 +72,12 @@ Ferrum uses a **gRPC plugin architecture** (`ferrum-provider-bridge`). AWS, Azur
 
 ## Installation
 
-### Prerequisites
+### Download
+
+- [Windows (MSI)](https://github.com/rabbittrix/ferrum/releases/latest/download/Ferrum_0.1.0_x64_en-US.msi)
+- [Linux (AppImage)](https://github.com/rabbittrix/ferrum/releases/latest/download/Ferrum_0.1.0_amd64.AppImage)
+
+### Prerequisites (build from source)
 
 - **Rust** 1.75+ ([rustup.rs](https://rustup.rs))
 - **Node.js** 20+ (for GUI only)
@@ -85,26 +90,7 @@ cd ferrum
 cargo build --release
 ```
 
-The CLI binary is at `target/release/ferrum`.
-
-### Windows (MSI / EXE)
-
-```powershell
-cargo build --release -p ferrum-cli
-# GUI installer:
-cd ferrum-gui
-npm install
-npm run tauri:build
-# Output: src-tauri/target/release/bundle/msi/ and nsis/
-```
-
-### Linux (Deb / AppImage)
-
-```bash
-cargo build --release -p ferrum-cli
-cd ferrum-gui && npm install && npm run tauri:build
-# Output: src-tauri/target/release/bundle/deb/ and appimage/
-```
+The CLI binary is at `target/release/ferrum`. See [MANUAL.md](MANUAL.md) for GUI builds on Windows and Linux.
 
 ---
 

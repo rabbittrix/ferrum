@@ -1,6 +1,7 @@
 mod commands;
 mod doctor;
 mod templates;
+mod test_drive;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -100,6 +101,13 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Run Docker smoke test (Hello Ferrum nginx container)
+    #[command(hide = true)]
+    TestDrive {
+        /// Remove smoke test project and resources
+        #[arg(long)]
+        cleanup: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -113,15 +121,22 @@ enum ProviderCommands {
     List,
 }
 
-fn maybe_telemetry(no_telemetry: bool) {
+fn maybe_telemetry(no_telemetry: bool, smoke_test: Option<bool>) {
     if no_telemetry || std::env::var("FERRUM_TELEMETRY_DISABLED").is_ok() {
         return;
     }
     let providers = ferrum_provider_bridge::PluginManager::new().installed_provider_names();
-    ferrum_telemetry::maybe_notify_install_with_providers(env!("CARGO_PKG_VERSION"), &providers);
+    ferrum_telemetry::maybe_notify_first_run(env!("CARGO_PKG_VERSION"), &providers, smoke_test);
 }
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{e:#}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
@@ -138,13 +153,13 @@ fn main() -> Result<()> {
         } => {
             commands::init(&path, template.as_deref(), passphrase.as_deref())?;
             if !cli.no_telemetry {
-                maybe_telemetry(false);
+                maybe_telemetry(false, None);
             }
         }
         Commands::Doctor { json } => {
             doctor::doctor(version, json)?;
             if !cli.no_telemetry {
-                maybe_telemetry(false);
+                maybe_telemetry(false, None);
             }
         }
         Commands::Plan { state, passphrase } => {
@@ -175,6 +190,17 @@ fn main() -> Result<()> {
             ProviderCommands::List => commands::provider_list()?,
         },
         Commands::Version { json } => commands::version(version, build_date, json)?,
+        Commands::TestDrive { cleanup } => {
+            let base = std::env::current_dir()?;
+            let result = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?
+                .block_on(test_drive::test_drive(cleanup, &base))?;
+            test_drive::print_smoke_result(&result);
+            if !result.success && !result.docker_available {
+                std::process::exit(1);
+            }
+        }
     }
 
     Ok(())

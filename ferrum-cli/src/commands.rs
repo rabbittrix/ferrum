@@ -4,13 +4,14 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use ferrum_core::{
     apply_with_providers, compute_destroy_plan, detect_docker, detect_rancher_endpoint,
-    format_plan_colored, import_tfstate as core_import_tfstate, load_project, plan_cost_estimate,
-    save_plan_graph, version_info, Engine, FerrumConfig, NodeStatus, GRAPH_FILENAME,
+    format_plan_colored, has_fe_files, import_tfstate as core_import_tfstate, load_project,
+    plan_cost_estimate, save_plan_graph, version_info, CoreError, Engine, FerrumConfig, NodeStatus,
+    GRAPH_FILENAME,
 };
 use ferrum_provider_bridge::{PluginManager, ProviderPool};
 use ferrum_state::{State, STATE_FILENAME};
 
-use crate::templates::{apply_template, TEMPLATE_NAMES};
+use crate::templates::{apply_template, STARTER_MAIN_FE, TEMPLATE_NAMES};
 
 /// Cross-shell confirmation prompt (PowerShell, Bash, CMD).
 pub fn confirm_prompt(message: &str) -> Result<bool> {
@@ -91,10 +92,7 @@ file = "ferrum.fstate"
     if template.is_none() {
         let fe_path = dir.join("main.fe");
         if !fe_path.exists() {
-            std::fs::write(
-                &fe_path,
-                "// Ferrum infrastructure\n// Run: ferrum init --template docker-local\n",
-            )?;
+            std::fs::write(&fe_path, STARTER_MAIN_FE)?;
         }
     }
 
@@ -117,6 +115,51 @@ file = "ferrum.fstate"
 
 fn project_dir_for_state(state_path: &str) -> std::path::PathBuf {
     ferrum_core::find_project_dir(Path::new(state_path))
+}
+
+fn map_config_error(e: CoreError) -> anyhow::Error {
+    match e {
+        CoreError::NoConfigFiles(msg) => anyhow::anyhow!(msg),
+        other => anyhow::Error::from(other),
+    }
+}
+
+fn load_project_dir(project_dir: &Path) -> Result<ferrum_core::LoadedProject> {
+    load_project(project_dir).map_err(map_config_error)
+}
+
+/// When no `.fe` files exist, offer to run `ferrum init` interactively.
+fn ensure_project_or_prompt(project_dir: &Path, state_path: &Path) -> Result<()> {
+    if has_fe_files(project_dir) {
+        return Ok(());
+    }
+
+    eprintln!(
+        "No Ferrum configuration files (.fe) found in {}.",
+        project_dir.display()
+    );
+    if confirm_prompt("Would you like to initialize a new project here? [y/N] ")? {
+        let state_file = if state_path.is_absolute() {
+            state_path.to_path_buf()
+        } else {
+            project_dir.join(state_path)
+        };
+        if state_file.exists() {
+            let fe_path = project_dir.join("main.fe");
+            if !fe_path.exists() {
+                std::fs::write(&fe_path, STARTER_MAIN_FE)?;
+                println!("✓ Created {}", fe_path.display());
+            }
+        } else {
+            let path = project_dir.to_str().unwrap_or(".");
+            init(path, None, None)?;
+        }
+        Ok(())
+    } else {
+        bail!(
+            "No Ferrum configuration files (.fe) found in this directory.\n  Try running `ferrum init` to create a project or `ferrum test-drive` to see a demo."
+        )
+    }
 }
 
 fn acquire_lock(state_path: &Path) -> Result<ferrum_core::StateLock> {
@@ -146,7 +189,9 @@ pub async fn plan(state_path: &str, passphrase: Option<&str>) -> Result<()> {
 }
 
 async fn plan_inner(state_path: &str, passphrase: Option<&str>) -> Result<()> {
-    let project = load_project(&project_dir_for_state(state_path)).context("load .fe configuration")?;
+    let project_dir = project_dir_for_state(state_path);
+    ensure_project_or_prompt(&project_dir, Path::new(state_path))?;
+    let project = load_project_dir(&project_dir)?;
 
     let state = State::load(state_path, passphrase).context("load state")?;
     let mut engine = Engine::new(state);
@@ -183,7 +228,9 @@ pub async fn apply(state_path: &str, passphrase: Option<&str>, auto_approve: boo
 }
 
 async fn apply_inner(state_path: &str, passphrase: Option<&str>, auto_approve: bool) -> Result<()> {
-    let project = load_project(&project_dir_for_state(state_path)).context("load .fe configuration")?;
+    let project_dir = project_dir_for_state(state_path);
+    ensure_project_or_prompt(&project_dir, Path::new(state_path))?;
+    let project = load_project_dir(&project_dir)?;
 
     let state = State::load(state_path, passphrase).context("load state")?;
     let mut engine = Engine::new(state);
