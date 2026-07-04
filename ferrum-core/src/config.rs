@@ -1,5 +1,7 @@
 //! Load `.fe` configuration, validate, resolve dependencies, and convert to state resources.
 
+pub mod load_balancer;
+
 use std::path::{Path, PathBuf};
 
 use ferrum_parser::{parse_fe_dir, FeResource, FeValue};
@@ -8,7 +10,6 @@ use ferrum_state::{ResourceInstance, ResourceStatus};
 
 use crate::error::{CoreError, Result};
 use crate::graph_export::{InfrastructureGraph, GRAPH_FILENAME};
-use crate::load_balancer::expand_load_balancers;
 use crate::plan::deps_from_resources;
 
 /// Parsed and validated Ferrum project configuration.
@@ -59,7 +60,7 @@ fn dir_has_fe_files(dir: &Path) -> bool {
 /// Discover `.fe` files in `dir`, parse, validate, and build execution graph.
 pub fn load_project(dir: &Path) -> Result<LoadedProject> {
     let mut config = parse_fe_dir(dir).map_err(CoreError::Parse)?;
-    expand_load_balancers(&mut config);
+    load_balancer::expand_load_balancers(&mut config);
     let execution_plan = resolve_fe(&config).map_err(CoreError::Resolve)?;
     let resources = fe_resources_to_instances(&config.resources);
     Ok(LoadedProject {

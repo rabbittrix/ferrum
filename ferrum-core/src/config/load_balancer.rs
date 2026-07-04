@@ -180,11 +180,3 @@ fn parse_fe_ref(addr: &str) -> ferrum_parser::FeReference {
         attribute: None,
     })
 }
-
-/// Mark expanded resources in instances (for graph display).
-pub fn is_load_balancer_expansion(resource_type: &str) -> bool {
-    matches!(
-        resource_type,
-        "aws_lb" | "aws_lb_target_group" | "aws_lb_listener"
-    )
-}

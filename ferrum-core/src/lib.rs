@@ -1,7 +1,6 @@
 //! Ferrum IaC engine — dependency graph, concurrency, and resource lifecycle.
 
 mod ai;
-mod config;
 mod cost;
 mod drift;
 mod engine;
@@ -9,7 +8,6 @@ mod error;
 mod graph;
 mod graph_export;
 mod import;
-mod load_balancer;
 mod lock;
 mod orchestration;
 mod plan;
@@ -19,6 +17,7 @@ mod refresh;
 mod system;
 mod uid;
 mod vault;
+mod config;
 
 pub use ai::{diagnose_failure, AiDiagnosis};
 pub use config::{
@@ -34,7 +33,7 @@ pub use graph_export::{
     GraphEdge, GraphNode, InfrastructureGraph, NodeStatus, GRAPH_FILENAME,
 };
 pub use import::{import_tfstate, ImportReport};
-pub use load_balancer::expand_load_balancers;
+pub use config::load_balancer::expand_load_balancers;
 pub use lock::{LockBackend, LockError, LockManager, StateLock};
 pub use orchestration::{
     deploy_pod_and_service, specs_from_resource, OrchestrationResult, PodSpec, ServiceSpec,
