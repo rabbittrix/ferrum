@@ -223,7 +223,11 @@ Features:
 
 ---
 
-## Provider Bridge
+## Documentation
+
+See **[MANUAL.md](MANUAL.md)** for the full CLI reference, environment setup (Windows/Linux), templates, load balancer sugar syntax, and getting-started guides for AWS, Azure, and Docker.
+
+Run `ferrum doctor` before your first plan/apply to verify PATH, credentials, and Docker.
 
 Ferrum communicates with **Terraform Provider binaries** (Go) via the **official HashiCorp Terraform Plugin Protocol v5/v6** over gRPC. Protobuf definitions are vendored from HashiCorp and compiled with **tonic** at build time:
 

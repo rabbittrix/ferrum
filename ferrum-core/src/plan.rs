@@ -134,6 +134,35 @@ pub fn compute_plan(state: &mut State, desired: &[ResourceInstance]) -> Result<P
     })
 }
 
+/// Build a destroy plan (delete all resources in reverse dependency order).
+pub fn compute_destroy_plan(state: &State) -> Result<Plan> {
+    let resources = state.resources().to_vec();
+    let deps = deps_from_resources(&resources);
+    let mut execution_order: Vec<String> = resources.iter().map(|r| r.address.clone()).collect();
+
+    if !deps.is_empty() {
+        let dg = DependencyGraph::from_resources(&resources);
+        if let Ok(order) = dg.execution_order() {
+            execution_order = order.into_iter().rev().collect();
+        }
+    }
+
+    let changes: Vec<PlannedChange> = resources
+        .iter()
+        .map(|r| PlannedChange {
+            address: r.address.clone(),
+            resource_type: r.resource_type.clone(),
+            action: ChangeAction::Delete,
+            reason: "destroy requested".into(),
+        })
+        .collect();
+
+    Ok(Plan {
+        changes,
+        execution_order,
+    })
+}
+
 /// Apply a plan to state (in-memory; persist separately).
 pub fn apply_plan(state: &mut State, plan: &Plan, desired: &[ResourceInstance]) -> Result<()> {
     for change in &plan.changes {

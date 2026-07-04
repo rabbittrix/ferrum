@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 ferrum-core = { path = "../../ferrum-core" }
 ferrum-state = { path = "../../ferrum-state" }
+ferrum-provider-bridge = { path = "../../ferrum-provider-bridge" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tauri = { version = "2", features = [] }

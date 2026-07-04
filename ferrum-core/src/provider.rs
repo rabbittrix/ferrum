@@ -10,6 +10,7 @@ use serde_json::json;
 use tracing::{info, warn};
 
 use crate::error::{CoreError, Result};
+use crate::orchestration::{deploy_pod_and_service, specs_from_resource};
 use crate::plan::{apply_plan, ChangeAction, Plan};
 
 /// Apply plan: try provider bridge first, fall back to state-only apply.
@@ -77,6 +78,34 @@ async fn apply_via_providers(
                     .iter()
                     .find(|r| r.address == address)
                     .ok_or_else(|| CoreError::Provider(format!("missing desired {address}")))?;
+
+                if resource.resource_type == "k8s_deployment" {
+                    let deploy_name = resource
+                        .address
+                        .split('.')
+                        .nth(1)
+                        .unwrap_or("web");
+                    if let Some((pod, svc)) =
+                        specs_from_resource(deploy_name, &resource.attributes)
+                    {
+                        deploy_pod_and_service(&pod, &svc)
+                            .await
+                            .map_err(|e| CoreError::Provider(e.to_string()))?;
+                    }
+                    if let Some(existing) = state
+                        .resources_mut()
+                        .iter_mut()
+                        .find(|r| r.address == address)
+                    {
+                        existing.status = ResourceStatus::Active;
+                        existing.updated_at = chrono::Utc::now();
+                    } else {
+                        let mut r = resource.clone();
+                        r.status = ResourceStatus::Active;
+                        state.resources_mut().push(r);
+                    }
+                    continue;
+                }
 
                 let prior = prior_map.get(&address).cloned().unwrap_or(json!({}));
                 let proposed = resource.attributes.clone();

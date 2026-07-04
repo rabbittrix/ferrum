@@ -1,4 +1,6 @@
 mod commands;
+mod doctor;
+mod templates;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -29,6 +31,9 @@ enum Commands {
         /// Project directory (default: current)
         #[arg(default_value = ".")]
         path: String,
+        /// Scaffold from template: docker-local, aws-web-app, azure-k8s-cluster
+        #[arg(long)]
+        template: Option<String>,
         /// Passphrase for state encryption
         #[arg(short, long)]
         passphrase: Option<String>,
@@ -48,9 +53,24 @@ enum Commands {
         state: String,
         #[arg(short, long)]
         passphrase: Option<String>,
-        /// Auto-approve without confirmation
-        #[arg(short, long)]
+        /// Auto-approve without confirmation (alias: --yes)
+        #[arg(short = 'y', long = "auto-approve")]
         auto_approve: bool,
+    },
+    /// Destroy all managed infrastructure
+    Destroy {
+        #[arg(short, long, default_value = "ferrum.fstate")]
+        state: String,
+        #[arg(short, long)]
+        passphrase: Option<String>,
+        #[arg(short = 'y', long = "auto-approve")]
+        auto_approve: bool,
+    },
+    /// System health checks (PATH, credentials, Docker, updates)
+    Doctor {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Import Terraform tfstate into Ferrum encrypted format
     Import {
@@ -74,8 +94,12 @@ enum Commands {
         #[command(subcommand)]
         command: ProviderCommands,
     },
-    /// Show Ferrum version and build info
-    Version,
+    /// Show Ferrum version, build date, and platform
+    Version {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -89,48 +113,76 @@ enum ProviderCommands {
     List,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn maybe_telemetry(no_telemetry: bool) {
+    if no_telemetry || std::env::var("FERRUM_TELEMETRY_DISABLED").is_ok() {
+        return;
+    }
+    let providers = ferrum_provider_bridge::PluginManager::new().installed_provider_names();
+    ferrum_telemetry::maybe_notify_install_with_providers(env!("CARGO_PKG_VERSION"), &providers);
+}
+
+fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
     let cli = Cli::parse();
-
-    if !cli.no_telemetry {
-        let providers = ferrum_provider_bridge::PluginManager::new().installed_provider_names();
-        ferrum_telemetry::maybe_notify_install_with_providers(
-            env!("CARGO_PKG_VERSION"),
-            &providers,
-        );
-    }
+    let version = env!("CARGO_PKG_VERSION");
+    let build_date = option_env!("FERRUM_BUILD_DATE").unwrap_or("development");
 
     match cli.command {
-        Commands::Init { path, passphrase } => commands::init(&path, passphrase.as_deref())?,
-        Commands::Plan { state, passphrase } => commands::plan(&state, passphrase.as_deref()).await?,
+        Commands::Init {
+            path,
+            template,
+            passphrase,
+        } => {
+            commands::init(&path, template.as_deref(), passphrase.as_deref())?;
+            if !cli.no_telemetry {
+                maybe_telemetry(false);
+            }
+        }
+        Commands::Doctor { json } => {
+            doctor::doctor(version, json)?;
+            if !cli.no_telemetry {
+                maybe_telemetry(false);
+            }
+        }
+        Commands::Plan { state, passphrase } => {
+            run_async(commands::plan(&state, passphrase.as_deref()))?;
+        }
         Commands::Apply {
             state,
             passphrase,
             auto_approve,
-        } => commands::apply(&state, passphrase.as_deref(), auto_approve).await?,
+        } => run_async(commands::apply(&state, passphrase.as_deref(), auto_approve))?,
+        Commands::Destroy {
+            state,
+            passphrase,
+            auto_approve,
+        } => run_async(commands::destroy(&state, passphrase.as_deref(), auto_approve))?,
         Commands::Import {
             tfstate,
             output,
             passphrase,
         } => commands::import_cmd(&tfstate, &output, passphrase.as_deref())?,
         Commands::Refresh { state, passphrase } => {
-            commands::refresh(&state, passphrase.as_deref()).await?
+            run_async(commands::refresh(&state, passphrase.as_deref()))?;
         }
         Commands::Provider { command } => match command {
-            ProviderCommands::Install { name } => commands::provider_install(&name).await?,
+            ProviderCommands::Install { name } => {
+                run_async(commands::provider_install(&name))?;
+            }
             ProviderCommands::List => commands::provider_list()?,
         },
-        Commands::Version => {
-            println!("Ferrum v{}", env!("CARGO_PKG_VERSION"));
-            println!("Author: Roberto de Souza <rabbittrix@hotmail.com>");
-            println!("https://github.com/rabbittrix/ferrum");
-        }
+        Commands::Version { json } => commands::version(version, build_date, json)?,
     }
 
     Ok(())
+}
+
+fn run_async(fut: impl std::future::Future<Output = Result<()>>) -> Result<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(fut)
 }

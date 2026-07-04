@@ -3,6 +3,9 @@ use crate::error::{ParseError, Result};
 use crate::schema_registry::SchemaRegistry;
 use crate::symbol::SymbolTable;
 
+/// Ferrum sugar types — expanded or orchestrated at runtime, not validated like provider resources.
+const SUGAR_TYPES: &[&str] = &["load_balancer", "k8s_deployment"];
+
 /// Known resource schemas — validated before `ferrum plan` when no provider schema loaded.
 const REQUIRED_ATTRS: &[(&str, &[&str])] = &[
     ("aws_vpc", &["cidr_block"]),
@@ -30,6 +33,9 @@ pub fn typecheck(file: &FeFile) -> TypeCheckReport {
     }
 
     for resource in &file.resources {
+        if SUGAR_TYPES.contains(&resource.resource_type.as_str()) {
+            continue;
+        }
         if REQUIRED_ATTRS
             .iter()
             .all(|(t, _)| *t != resource.resource_type)
@@ -93,6 +99,9 @@ fn validate_required_attrs_registry(
     registry: &SchemaRegistry,
     errors: &mut Vec<(usize, usize, String, String)>,
 ) {
+    if SUGAR_TYPES.contains(&resource.resource_type.as_str()) {
+        return;
+    }
     let required: Vec<&str> = registry
         .required_for(&resource.resource_type)
         .map(|v| v.iter().map(String::as_str).collect())

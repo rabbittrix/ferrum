@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { InfrastructureGraph } from '@/components/InfrastructureGraph';
+import { InfrastructureGraph, type GraphNode } from '@/components/InfrastructureGraph';
 import { PlanPanel, type PlanWithCost } from '@/components/PlanPanel';
 import { Sidebar } from '@/components/Sidebar';
 import { VaultPanel } from '@/components/VaultPanel';
@@ -18,6 +18,8 @@ export default function Dashboard() {
   const [graphKey, setGraphKey] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [plannedActions, setPlannedActions] = useState<Record<string, string>>({});
+  const [applyStatuses, setApplyStatuses] = useState<Record<string, GraphNode['status']>>({});
+  const [showGraphHelp, setShowGraphHelp] = useState(false);
 
   useEffect(() => {
     async function resolvePaths() {
@@ -71,8 +73,30 @@ export default function Dashboard() {
     }
   };
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    async function setup() {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen<{ address: string; status: string }>(
+          'apply-progress',
+          (event) => {
+            const status = event.payload.status as GraphNode['status'];
+            setApplyStatuses((prev) => ({ ...prev, [event.payload.address]: status }));
+            reloadGraph();
+          }
+        );
+      } catch {
+        /* not in Tauri */
+      }
+    }
+    setup();
+    return () => unlisten?.();
+  }, [reloadGraph]);
+
   const handleApply = async () => {
     setApplying(true);
+    setApplyStatuses({});
     setStatusMessage(null);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -138,6 +162,9 @@ export default function Dashboard() {
             graphPath={graphPath}
             applyPulse={applying}
             plannedActions={plannedActions}
+            applyStatuses={applyStatuses}
+            showHelp={showGraphHelp}
+            onToggleHelp={() => setShowGraphHelp((v) => !v)}
           />
         )}
         {activePanel === 'vault' && (

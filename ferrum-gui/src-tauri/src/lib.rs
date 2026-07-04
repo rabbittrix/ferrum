@@ -1,12 +1,13 @@
 mod vault;
 
 use ferrum_core::{
-    format_plan, load_project_for_state, plan_cost_estimate, save_plan_graph, ChangeAction,
-    CostEstimate, Engine, InfrastructureGraph, Plan, GRAPH_FILENAME,
+    apply_with_providers, format_plan, load_project_for_state, plan_cost_estimate, save_plan_graph,
+    ChangeAction, CostEstimate, Engine, InfrastructureGraph, NodeStatus, Plan, GRAPH_FILENAME,
 };
 use ferrum_state::State;
 use serde::Serialize;
 use std::path::PathBuf;
+use tauri::Emitter;
 
 use vault::{
     resolve_state_path, vault_add_impl, vault_delete_impl, vault_list_impl, vault_reveal_impl,
@@ -135,8 +136,15 @@ fn ferrum_plan_with_cost(
     Ok(plan_to_response(&plan))
 }
 
+#[derive(Serialize, Clone)]
+pub struct ApplyProgressEvent {
+    pub address: String,
+    pub status: String,
+}
+
 #[tauri::command]
-fn ferrum_apply(
+async fn ferrum_apply(
+    app: tauri::AppHandle,
     state_path: Option<String>,
     passphrase: Option<String>,
 ) -> Result<ApplyResponse, String> {
@@ -157,9 +165,53 @@ fn ferrum_apply(
         });
     }
 
-    engine
-        .apply(&plan, &project.resources)
-        .map_err(|e| e.to_string())?;
+    let graph_path = graph_path_for(&path);
+    let pool = ferrum_provider_bridge::ProviderPool::default();
+
+    for address in &plan.execution_order {
+        let _ = app.emit(
+            "apply-progress",
+            ApplyProgressEvent {
+                address: address.clone(),
+                status: "creating".into(),
+            },
+        );
+        if let Ok(mut graph) = InfrastructureGraph::load(&graph_path) {
+            graph.set_node_status(address, NodeStatus::Creating);
+            let _ = graph.save(&graph_path);
+        }
+    }
+
+    if let Err(e) = apply_with_providers(&mut engine.state, &plan, &project.resources, &pool).await {
+        for address in &plan.execution_order {
+            let _ = app.emit(
+                "apply-progress",
+                ApplyProgressEvent {
+                    address: address.clone(),
+                    status: "failed".into(),
+                },
+            );
+            if let Ok(mut graph) = InfrastructureGraph::load(&graph_path) {
+                graph.set_node_status(address, NodeStatus::Failed);
+                let _ = graph.save(&graph_path);
+            }
+        }
+        return Err(e.to_string());
+    }
+
+    for address in &plan.execution_order {
+        let _ = app.emit(
+            "apply-progress",
+            ApplyProgressEvent {
+                address: address.clone(),
+                status: "active".into(),
+            },
+        );
+        if let Ok(mut graph) = InfrastructureGraph::load(&graph_path) {
+            graph.set_node_status(address, NodeStatus::Active);
+            let _ = graph.save(&graph_path);
+        }
+    }
 
     let graph_path = save_plan_graph(&path, &project.resources).map_err(|e| e.to_string())?;
 

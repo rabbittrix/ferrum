@@ -102,6 +102,12 @@ impl InfrastructureGraph {
         let raw = std::fs::read_to_string(path)?;
         serde_json::from_str(&raw).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
+
+    pub fn set_node_status(&mut self, address: &str, status: NodeStatus) {
+        if let Some(node) = self.nodes.iter_mut().find(|n| n.address == address) {
+            node.status = status;
+        }
+    }
 }
 
 fn map_status(status: &ferrum_state::ResourceStatus) -> NodeStatus {

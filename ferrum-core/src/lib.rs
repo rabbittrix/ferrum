@@ -9,10 +9,14 @@ mod error;
 mod graph;
 mod graph_export;
 mod import;
+mod load_balancer;
 mod lock;
+mod orchestration;
 mod plan;
+mod project_config;
 mod provider;
 mod refresh;
+mod system;
 mod uid;
 mod vault;
 
@@ -30,10 +34,16 @@ pub use graph_export::{
     GraphEdge, GraphNode, InfrastructureGraph, NodeStatus, GRAPH_FILENAME,
 };
 pub use import::{import_tfstate, ImportReport};
-pub use lock::{LockBackend, LockManager, StateLock};
+pub use load_balancer::expand_load_balancers;
+pub use lock::{LockBackend, LockError, LockManager, StateLock};
+pub use orchestration::{
+    deploy_pod_and_service, specs_from_resource, OrchestrationResult, PodSpec, ServiceSpec,
+};
+pub use project_config::FerrumConfig;
+pub use system::{detect_docker, detect_rancher_endpoint, run_doctor, version_info, CheckStatus, DoctorReport, HealthCheck};
 pub use plan::{
     deps_from_resources, format_plan, format_plan_colored, graph_from_state, plan_cost_estimate,
-    apply_plan, compute_plan, ChangeAction, Plan, PlannedChange, PlanSummary,
+    apply_plan, compute_destroy_plan, compute_plan, ChangeAction, Plan, PlannedChange, PlanSummary,
 };
 pub use provider::{apply_with_providers, load_schemas_for_types};
 pub use refresh::refresh_resources;

@@ -4,7 +4,7 @@ COMMENT = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
 file = { SOI ~ (COMMENT | block)* ~ EOI }
 
-block = { provider_block | resource_block }
+block = { provider_block | resource_block | load_balancer_block }
 
 ident = @{ (ASCII_ALPHANUMERIC | "_")+ }
 quoted = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
@@ -13,6 +13,7 @@ resource_id = { quoted | ident }
 
 provider_block = { "provider" ~ ident ~ "{" ~ (COMMENT | attr)* ~ "}" }
 resource_block = { "resource" ~ resource_id ~ resource_id ~ "{" ~ (COMMENT | attr)* ~ "}" }
+load_balancer_block = { "load_balancer" ~ resource_id ~ "{" ~ (COMMENT | attr)* ~ "}" }
 
 attr = { ident ~ assign ~ value ~ comma? }
 assign = { ":" | "=" }

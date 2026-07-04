@@ -57,6 +57,9 @@ fn parse_syntax(source: &str) -> Result<FeFile> {
                         Rule::resource_block => {
                             resources.push(parse_resource(block, source)?);
                         }
+                        Rule::load_balancer_block => {
+                            resources.push(parse_load_balancer(block, source)?);
+                        }
                         _ => {}
                     }
                 }
@@ -65,6 +68,9 @@ fn parse_syntax(source: &str) -> Result<FeFile> {
                 }
                 Rule::resource_block => {
                     resources.push(parse_resource(inner, source)?);
+                }
+                Rule::load_balancer_block => {
+                    resources.push(parse_load_balancer(inner, source)?);
                 }
                 Rule::EOI | Rule::COMMENT => {}
                 _ => {}
@@ -114,6 +120,32 @@ fn parse_resource(pair: pest::iterators::Pair<'_, Rule>, source: &str) -> Result
 
     Ok(FeResource {
         resource_type,
+        name,
+        attributes: attrs,
+        depends_on,
+        line,
+        column,
+    })
+}
+
+fn parse_load_balancer(pair: pest::iterators::Pair<'_, Rule>, source: &str) -> Result<FeResource> {
+    let span = pair.as_span();
+    let (line, column) = span_pos(source, span);
+    let mut inner = pair.into_inner();
+    let name = parse_resource_id(inner.next().unwrap());
+    let attrs = parse_attr_list(inner, source)?;
+    let mut depends_on = extract_depends_on(&attrs);
+    if let Some(target) = attrs.get("target").and_then(|v| match v {
+        FeValue::Ref(r) => Some(r.address()),
+        FeValue::String(s) => Some(s.clone()),
+        _ => None,
+    }) {
+        if !depends_on.contains(&target) {
+            depends_on.push(target);
+        }
+    }
+    Ok(FeResource {
+        resource_type: "load_balancer".into(),
         name,
         attributes: attrs,
         depends_on,

@@ -29,4 +29,5 @@ reqwest = { workspace = true, features = ["blocking"] }
 dirs = { workspace = true }
 chrono = { workspace = true }
 
-# reqwest/dirs kept for future CLI hooks; telemetry lives in ferrum-telemetry
+[build-dependencies]
+chrono = { workspace = true }

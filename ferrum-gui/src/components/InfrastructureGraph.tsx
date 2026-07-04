@@ -22,7 +22,7 @@ export type InfrastructureGraphData = {
 
 const STATUS_STROKE: Record<GraphNode['status'], string> = {
   pending: '#64748b',
-  creating: '#3b82f6',
+  creating: '#eab308',
   active: '#22c55e',
   failed: '#ef4444',
   drifted: '#f59e0b',
@@ -58,6 +58,9 @@ type Props = {
   graphPath?: string;
   applyPulse?: boolean;
   plannedActions?: Record<string, string>;
+  applyStatuses?: Record<string, GraphNode['status']>;
+  showHelp?: boolean;
+  onToggleHelp?: () => void;
 };
 
 function clampZoom(z: number) {
@@ -83,7 +86,14 @@ function fitView(nodes: GraphNode[]): { zoom: number; offset: { x: number; y: nu
   return { zoom, offset: { x: offsetX, y: offsetY } };
 }
 
-export function InfrastructureGraph({ graphPath, applyPulse, plannedActions = {} }: Props) {
+export function InfrastructureGraph({
+  graphPath,
+  applyPulse,
+  plannedActions = {},
+  applyStatuses = {},
+  showHelp = false,
+  onToggleHelp,
+}: Props) {
   const [graph, setGraph] = useState<InfrastructureGraphData>(DEMO);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -208,15 +218,40 @@ export function InfrastructureGraph({ graphPath, applyPulse, plannedActions = {}
           >
             Fit
           </button>
+          {onToggleHelp && (
+            <button
+              type="button"
+              onClick={onToggleHelp}
+              className="rounded border border-space-700 px-2.5 py-1 text-xs text-slate-400 transition hover:border-cyan-neon/40 hover:text-cyan-neon"
+              aria-label="Graph help"
+            >
+              ?
+            </button>
+          )}
         </div>
 
         <div className="flex gap-3 text-xs text-slate-500">
-          <span><span className="inline-block h-2 w-2 rounded-full bg-blue-500" /> Creating</span>
-          <span><span className="inline-block h-2 w-2 rounded-full bg-green-500" /> Complete</span>
-          <span><span className="inline-block h-2 w-2 rounded-full bg-red-500" /> Error</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-yellow-500" /> In Progress</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-green-500" /> Success</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-red-500" /> Failed</span>
           <span>🔐 Vault</span>
         </div>
       </div>
+
+      {showHelp && (
+        <div className="mb-3 rounded border border-cyan-neon/30 bg-space-950/90 p-3 text-xs text-slate-300">
+          <p className="font-semibold text-cyan-neon">Infrastructure Graph Help</p>
+          <p className="mt-1">
+            Each node is a Ferrum resource. Arrows show <strong>dependencies</strong> — a resource
+            waits for its upstream dependencies before apply runs.
+          </p>
+          <p className="mt-1">
+            During apply: <span className="text-yellow-400">yellow</span> = in progress,{' '}
+            <span className="text-green-400">green</span> = success,{' '}
+            <span className="text-red-400">red</span> = failed.
+          </p>
+        </div>
+      )}
 
       <p className="mb-2 text-xs text-slate-600">
         Scroll to zoom · drag to pan
@@ -262,8 +297,10 @@ export function InfrastructureGraph({ graphPath, applyPulse, plannedActions = {}
 
           {graph.nodes.map((node) => {
             const planned = plannedActions[node.address];
-            const stroke = planned ? PLAN_STROKE[planned] ?? '#00e5ff' : STATUS_STROKE[node.status];
-            const pulse = applyPulse && (node.status === 'creating' || planned === 'create');
+            const liveStatus = applyStatuses[node.address];
+            const status = liveStatus ?? node.status;
+            const stroke = planned ? PLAN_STROKE[planned] ?? '#00e5ff' : STATUS_STROKE[status];
+            const pulse = applyPulse && (status === 'creating' || planned === 'create');
             const dash = planned === 'delete' ? '6 3' : undefined;
             return (
               <g key={node.id} transform={`translate(${node.x - 84}, ${node.y - 24})`}>

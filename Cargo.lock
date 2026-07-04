@@ -1132,6 +1132,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "dirs",
  "ferrum-crypto",
  "ferrum-parser",
  "ferrum-provider-bridge",
@@ -1139,6 +1140,7 @@ dependencies = [
  "ferrum-state",
  "petgraph",
  "rayon",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tempfile",
@@ -1167,6 +1169,7 @@ name = "ferrum-gui"
 version = "0.1.0"
 dependencies = [
  "ferrum-core",
+ "ferrum-provider-bridge",
  "ferrum-state",
  "serde",
  "serde_json",
